@@ -77,3 +77,18 @@ test('finds duplicate companies by domain and merges them', function () {
         ->and($merged->account_tier)->toBe('tier_1')
         ->and($c2->fresh()->trashed())->toBeTrue();
 });
+
+test('refuses to merge a contact or a company into itself and leaves its data alone', function () {
+    $contact = Contact::factory()->create(['email' => 'solo@example.com']);
+    $company = Company::factory()->create(['name' => 'Solo Ltd', 'domain' => 'solo.test']);
+    $company->associateWith($contact);
+
+    expect(fn () => app(MergeContactsAction::class)->execute($contact, Contact::find($contact->id)))
+        ->toThrow(InvalidArgumentException::class, 'cannot be merged into itself')
+        ->and(fn () => app(MergeCompaniesAction::class)->execute($company, Company::find($company->id)))
+        ->toThrow(InvalidArgumentException::class, 'cannot be merged into itself');
+
+    expect($contact->fresh()->trashed())->toBeFalse()
+        ->and($company->fresh()->trashed())->toBeFalse()
+        ->and($contact->getAssociated(Company::class))->toHaveCount(1);
+});

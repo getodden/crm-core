@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Actions;
 
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Odden\Core\Enums\ActivityType;
 use Odden\Core\Events\CompaniesMerged;
 use Odden\Core\Models\Company;
@@ -28,6 +29,10 @@ class MergeCompaniesAction
      */
     public function execute(Company $primary, Company $secondary, array $fieldOverrides = []): Company
     {
+        // Merging a record into itself would treat each of its own associations as a duplicate of itself and delete
+        // them, then soft-delete the record.
+        throw_if($primary->is($secondary), InvalidArgumentException::class, 'A company cannot be merged into itself.');
+
         app(TenantGuard::class)->assertSameTenant($primary, $secondary);
 
         return DB::transaction(function () use ($primary, $secondary, $fieldOverrides): Company {
