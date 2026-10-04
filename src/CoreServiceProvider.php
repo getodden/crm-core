@@ -8,6 +8,8 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Odden\Core\Actions\SummarizeTimelineAction;
+use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Support\Enrichment\EnrichmentManager;
 use Odden\Core\Support\LifecycleStateMachine;
@@ -33,6 +35,9 @@ class CoreServiceProvider extends ServiceProvider
 
         // Odden is single-tenant unless a multi-tenant host rebinds the tenant context.
         $this->app->singletonIf(TenantContext::class, NullTenantContext::class);
+
+        // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
+        $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
 
         // Every package registers its models here; resolved lazily so provider order doesn't matter.
         $this->app->singleton(ModelRegistry::class);
