@@ -9,12 +9,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Odden\Core\Actions\SummarizeTimelineAction;
+use Odden\Core\Contracts\MailRouteResolver;
 use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Support\Enrichment\EnrichmentManager;
 use Odden\Core\Support\LifecycleStateMachine;
 use Odden\Core\Support\ModelRegistry;
 use Odden\Core\Support\NullTenantContext;
+use Odden\Core\Support\SystemMailRouteResolver;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -38,6 +40,9 @@ class CoreServiceProvider extends ServiceProvider
 
         // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
         $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
+
+        // Whether a domain accepts mail comes from DNS unless an application rebinds the contract.
+        $this->app->bindIf(MailRouteResolver::class, SystemMailRouteResolver::class);
 
         // Every package registers its models here; resolved lazily so provider order doesn't matter.
         $this->app->singleton(ModelRegistry::class);

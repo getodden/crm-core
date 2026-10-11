@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Odden\Core\Tests;
 
+use Odden\Core\Contracts\MailRouteResolver;
 use Odden\Core\CoreServiceProvider;
+use Odden\Core\Tests\Fixtures\FakeMailRouteResolver;
 use Odden\Core\Tests\Fixtures\User;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -29,6 +31,9 @@ abstract class TestCase extends Orchestra
     {
         $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
         $app['config']->set('auth.providers.users.model', User::class);
+
+        // The suite never touches real DNS. Domains ending in .invalid have no mail server.
+        $app->bind(MailRouteResolver::class, FakeMailRouteResolver::class);
     }
 
     /**

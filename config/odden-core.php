@@ -61,6 +61,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Email Validation
+    |--------------------------------------------------------------------------
+    |
+    | Every contact gets an email status (valid, risky, invalid, unknown). Without the
+    | DNS check it is derived from the address alone: syntax, a typo in a well-known
+    | domain, a disposable provider, a shared role mailbox. With it, a domain that
+    | accepts no mail is marked invalid. The mailbox itself is never probed.
+    |
+    | "check_dns" is applied when a contact is created through CreateContactAction;
+    | set it to false to keep that step out of the request and run
+    | ValidateContactEmailAction from a queue instead. Definite answers are cached
+    | per domain for "dns_cache_minutes".
+    |
+    */
+    'email_validation' => [
+        'enabled' => env('ODDEN_EMAIL_VALIDATION', true),
+        'check_dns' => env('ODDEN_EMAIL_CHECK_DNS', true),
+        'dns_cache_minutes' => 1440,
+
+        // Extra disposable-provider domains and shared-mailbox local parts to flag as risky.
+        'disposable_domains' => [],
+        'role_local_parts' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Lifecycle State Machine
     |--------------------------------------------------------------------------
     |

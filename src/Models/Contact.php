@@ -13,8 +13,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Odden\Core\Database\Factories\ContactFactory;
+use Odden\Core\Enums\EmailStatus;
+use Odden\Core\Enums\EmailStatusReason;
 use Odden\Core\Enums\LeadStatus;
 use Odden\Core\Enums\LifecycleStage;
+use Odden\Core\Support\EmailValidator;
 use Odden\Core\Support\UserModel;
 use Odden\Core\Traits\AuditsProperties;
 use Odden\Core\Traits\BelongsToTeam;
@@ -30,6 +33,9 @@ use Odden\Core\Traits\QualifiesRelatedColumns;
  * @property string|null $last_name
  * @property string|null $job_title
  * @property string $email
+ * @property EmailStatus|null $email_status
+ * @property EmailStatusReason|null $email_status_reason
+ * @property CarbonInterface|null $email_checked_at
  * @property string|null $phone
  * @property string|null $linkedin_url
  * @property string|null $timezone
@@ -92,6 +98,9 @@ class Contact extends Model
         'last_name',
         'job_title',
         'email',
+        'email_status',
+        'email_status_reason',
+        'email_checked_at',
         'phone',
         'linkedin_url',
         'timezone',
@@ -139,6 +148,9 @@ class Contact extends Model
     protected function casts(): array
     {
         return [
+            'email_status' => EmailStatus::class,
+            'email_status_reason' => EmailStatusReason::class,
+            'email_checked_at' => 'datetime',
             'lifecycle_stage' => LifecycleStage::class,
             'became_subscriber_at' => 'datetime',
             'became_lead_at' => 'datetime',
@@ -241,6 +253,44 @@ class Contact extends Model
     public function scopeWhereEmail(Builder $query, string $email): Builder
     {
         return $query->where('email', strtolower(trim($email)));
+    }
+
+    /**
+     * Record what can be known about the address without touching the network, so every way a
+     * contact is created or re-addressed leaves an honest status behind. The DNS check is a
+     * separate step (see ValidateContactEmailAction) because it should not run inside a save.
+     * A new address never inherits the previous address's status.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Contact $contact): void {
+            if ($contact->email_status === null) {
+                static::stampEmailStatus($contact);
+            }
+        });
+
+        static::updating(function (Contact $contact): void {
+            if ($contact->isDirty('email') && ! $contact->isDirty('email_status')) {
+                static::stampEmailStatus($contact);
+            }
+        });
+    }
+
+    protected static function stampEmailStatus(Contact $contact): void
+    {
+        if (! config('odden-core.email_validation.enabled', true) || trim((string) $contact->email) === '') {
+            $contact->email_status = null;
+            $contact->email_status_reason = null;
+            $contact->email_checked_at = null;
+
+            return;
+        }
+
+        $check = app(EmailValidator::class)->check((string) $contact->email, checkDns: false);
+
+        $contact->email_status = $check->status;
+        $contact->email_status_reason = $check->reason;
+        $contact->email_checked_at = now();
     }
 
     /**

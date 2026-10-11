@@ -30,6 +30,12 @@ class CreateContactAction
 
         $contact = Contact::create($attributes);
 
+        // Creating a contact records what is knowable offline; this adds the DNS check, whose
+        // answers are cached per domain, so the contact leaves here with a settled status.
+        if (config('odden-core.email_validation.enabled', true) && config('odden-core.email_validation.check_dns', true)) {
+            app(ValidateContactEmailAction::class)->execute($contact);
+        }
+
         event(new ContactCreated($contact));
 
         if ($autoAssociateCompany || (bool) config('odden-core.auto_associate_companies', false)) {
