@@ -176,6 +176,15 @@ class Contact extends Model
     }
 
     /**
+     * Whether a message to this address bounced. A bounce is evidence from a real delivery attempt, so
+     * it outranks anything the offline and DNS checks can say; only a change of address clears it.
+     */
+    public function hasBounced(): bool
+    {
+        return $this->email_status === EmailStatus::Invalid && $this->email_status_reason === EmailStatusReason::Bounced;
+    }
+
+    /**
      * Mark this contact as contacted with timestamp.
      */
     public function markContacted(?CarbonInterface $at = null): self

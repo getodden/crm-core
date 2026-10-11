@@ -98,3 +98,26 @@ it('filters contacts by status', function (): void {
 
     expect(Contact::query()->where('email_status', EmailStatus::Risky)->count())->toBe(1);
 });
+
+it('does not re-check a bounced address back to valid', function (): void {
+    $contact = Contact::factory()->create(['email' => 'dana@acme.com']);
+    $contact->forceFill([
+        'email_status' => EmailStatus::Invalid,
+        'email_status_reason' => EmailStatusReason::Bounced,
+    ])->saveQuietly();
+
+    app(ValidateContactEmailAction::class)->execute($contact);
+
+    expect($contact->fresh()->hasBounced())->toBeTrue()
+        ->and($contact->fresh()->email_status)->toBe(EmailStatus::Invalid);
+});
+
+it('forgets a bounce when the address changes', function (): void {
+    $contact = Contact::factory()->create(['email' => 'dana@acme.com']);
+    $contact->forceFill(['email_status' => EmailStatus::Invalid, 'email_status_reason' => EmailStatusReason::Bounced])->saveQuietly();
+
+    $contact->update(['email' => 'dana.smith@acme.com']);
+
+    expect($contact->fresh()->hasBounced())->toBeFalse()
+        ->and($contact->fresh()->email_status)->not->toBe(EmailStatus::Invalid);
+});

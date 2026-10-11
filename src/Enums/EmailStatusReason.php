@@ -12,6 +12,7 @@ enum EmailStatusReason: string
     case Disposable = 'disposable';
     case Role = 'role';
     case DnsUnavailable = 'dns_unavailable';
+    case Bounced = 'bounced';
     case NotChecked = 'not_checked';
 
     public function label(): string
@@ -23,6 +24,7 @@ enum EmailStatusReason: string
             self::Disposable => 'Disposable email provider',
             self::Role => 'Shared role address',
             self::DnsUnavailable => 'Domain could not be checked',
+            self::Bounced => 'A message to this address bounced',
             self::NotChecked => 'Not checked yet',
         };
     }
