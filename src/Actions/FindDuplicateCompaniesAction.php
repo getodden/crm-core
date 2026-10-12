@@ -6,6 +6,7 @@ namespace Odden\Core\Actions;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Odden\Core\Models\Company;
 
@@ -17,7 +18,7 @@ class FindDuplicateCompaniesAction
      * `$visible` limits the search to companies in the given query (for example the companies a panel
      * user may see), so duplicates are never reported across a scope boundary.
      *
-     * @param  Builder<Company>|null  $visible
+     * @param  Builder<covariant Model>|null  $visible
      * @return array<int, array{
      *     match_field: string,
      *     match_value: string,

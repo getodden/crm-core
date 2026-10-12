@@ -6,6 +6,7 @@ namespace Odden\Core\Actions;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Odden\Core\Models\Contact;
 
 class FindDuplicateContactsAction
@@ -21,7 +22,7 @@ class FindDuplicateContactsAction
      * `$visible` limits the search to contacts in the given query (for example the contacts a panel
      * user may see), so duplicates are never reported across a scope boundary.
      *
-     * @param  Builder<Contact>|null  $visible
+     * @param  Builder<covariant Model>|null  $visible
      * @return array<int, array{
      *     match_field: string,
      *     match_value: string,
