@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Sleep;
 use Odden\Core\Events\ContactCreated;
 use Odden\Core\Models\Contact;
 use Odden\Core\Support\ContactLookup;
@@ -74,4 +77,56 @@ it('creates contacts through CreateContactAction', function (): void {
 
     Event::assertDispatched(ContactCreated::class, fn (ContactCreated $event): bool => $event->contact->is($created));
     expect($created->email_status)->not->toBeNull();
+});
+
+function contactEmailLock(string $email, int $seconds = 10): Lock
+{
+    return Cache::lock('odden:contact-email:'.sha1($email), $seconds);
+}
+
+it('looks again after waiting for the lock, so a contact created meanwhile is returned', function (): void {
+    // Another request holds the lock while it creates the contact.
+    $other = contactEmailLock('race@example.com');
+    expect($other->get())->toBeTrue();
+
+    $existing = Contact::factory()->create(['email' => 'race@example.com']);
+    $other->release();
+
+    $found = ContactLookup::findOrCreate('Race@Example.com', ['first_name' => 'Second']);
+
+    expect($found->id)->toBe($existing->id)
+        ->and(Contact::query()->where('email', 'race@example.com')->count())->toBe(1);
+});
+
+it('keeps the lock until the surrounding transaction commits, so other connections wait for the new contact', function (): void {
+    DB::transaction(function (): void {
+        ContactLookup::findOrCreate('pending@example.com');
+
+        // Another connection can't see the uncommitted contact, so it must not get the lock yet.
+        expect(contactEmailLock('pending@example.com')->get())->toBeFalse();
+
+        // The same request looking up the address again sees its own contact without waiting.
+        expect(ContactLookup::findOrCreate('pending@example.com')->email)->toBe('pending@example.com');
+    });
+
+    expect(contactEmailLock('pending@example.com')->get())->toBeTrue()
+        ->and(Contact::query()->where('email', 'pending@example.com')->count())->toBe(1);
+});
+
+it('releases the lock right away outside a transaction', function (): void {
+    ContactLookup::findOrCreate('quick@example.com');
+
+    expect(contactEmailLock('quick@example.com')->get())->toBeTrue();
+});
+
+it('still creates the contact once when the lock is never released', function (): void {
+    Sleep::fake(syncWithCarbon: true);
+
+    expect(contactEmailLock('stuck@example.com', 60)->get())->toBeTrue();
+
+    $first = ContactLookup::findOrCreate('stuck@example.com');
+    $second = ContactLookup::findOrCreate('stuck@example.com');
+
+    expect($second->id)->toBe($first->id)
+        ->and(Contact::query()->where('email', 'stuck@example.com')->count())->toBe(1);
 });
