@@ -8,6 +8,8 @@ use Odden\Core\Http\Middleware\RequireApiToken;
 beforeEach(function (): void {
     Route::post('/_test/protected', fn () => response()->json(['ok' => true]))
         ->middleware(RequireApiToken::class.':odden-test.api.token');
+    Route::post('/_test/protected-url', fn () => response()->json(['ok' => true]))
+        ->middleware(RequireApiToken::class.':odden-test.api.token,query');
 });
 
 it('keeps protected endpoints disabled until a token is configured', function (): void {
@@ -25,15 +27,21 @@ it('rejects a wrong token', function (): void {
 
     $this->withToken('wrong-token')->postJson('/_test/protected')->assertUnauthorized();
     $this->flushHeaders()->withHeader('X-Odden-Token', 'wrong-token')->postJson('/_test/protected')->assertUnauthorized();
-    $this->flushHeaders()->postJson('/_test/protected?token=wrong-token')->assertUnauthorized();
+    $this->flushHeaders()->postJson('/_test/protected-url?token=wrong-token')->assertUnauthorized();
 });
 
-it('accepts the token as a bearer token, a header, or a query parameter', function (): void {
+it('accepts the token as a bearer token or a header', function (): void {
     config(['odden-test.api.token' => 'secret-token']);
 
     $this->withToken('secret-token')->postJson('/_test/protected')->assertOk();
     $this->flushHeaders()->withHeader('X-Odden-Token', 'secret-token')->postJson('/_test/protected')->assertOk();
-    $this->flushHeaders()->postJson('/_test/protected?token=secret-token')->assertOk();
+});
+
+it('ignores the query parameter unless the route opts in', function (): void {
+    config(['odden-test.api.token' => 'secret-token']);
+
+    $this->postJson('/_test/protected?token=secret-token')->assertUnauthorized();
+    $this->postJson('/_test/protected-url?token=secret-token')->assertOk();
 });
 
 it('rate limits public routes per IP using the configured limit', function (): void {
