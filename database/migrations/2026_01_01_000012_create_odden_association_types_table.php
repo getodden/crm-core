@@ -45,6 +45,7 @@ return new class extends Migration
         $associationsTable = config('odden-core.tables.associations', 'odden_associations');
 
         Schema::table($associationsTable, function (Blueprint $table): void {
+            $table->dropIndex(['association_type_id']);
             $table->dropColumn(['association_type_id', 'label']);
         });
 

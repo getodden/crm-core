@@ -88,6 +88,7 @@ return new class extends Migration
         });
 
         Schema::table($companiesTable, function (Blueprint $table): void {
+            $table->dropIndex(['lifecycle_stage']);
             $table->dropColumn([
                 'lifecycle_stage',
                 'became_subscriber_at',

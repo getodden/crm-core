@@ -32,6 +32,8 @@ return new class extends Migration
         $contactsTable = config('odden-core.tables.contacts', 'odden_contacts');
 
         Schema::table($contactsTable, function (Blueprint $table): void {
+            $table->dropIndex(['lead_status']);
+            $table->dropIndex(['last_contacted_at']);
             $table->dropColumn([
                 'job_title',
                 'lead_status',

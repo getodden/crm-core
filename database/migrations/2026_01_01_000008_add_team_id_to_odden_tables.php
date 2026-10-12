@@ -39,12 +39,14 @@ return new class extends Migration
 
         if (Schema::hasTable($contactsTable)) {
             Schema::table($contactsTable, function (Blueprint $table): void {
+                $table->dropIndex(['team_id']);
                 $table->dropColumn('team_id');
             });
         }
 
         if (Schema::hasTable($companiesTable)) {
             Schema::table($companiesTable, function (Blueprint $table): void {
+                $table->dropIndex(['team_id']);
                 $table->dropColumn('team_id');
             });
         }
