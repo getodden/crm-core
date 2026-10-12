@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Support;
 
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Actions\TransitionLifecycleStageAction;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Exceptions\InvalidLifecycleStageTransitionException;
 
@@ -171,15 +172,16 @@ class LifecycleStateMachine
             return;
         }
 
-        $rawFromStage = $record->getAttribute('lifecycle_stage');
-        $fromStage = null;
+        $this->validate($record, TransitionLifecycleStageAction::stageOf($record->getAttribute('lifecycle_stage')), $toStage, $source);
+    }
 
-        if ($rawFromStage instanceof LifecycleStage) {
-            $fromStage = $rawFromStage;
-        } elseif (is_string($rawFromStage) && $rawFromStage !== '') {
-            $fromStage = LifecycleStage::tryFrom($rawFromStage);
-        }
-
+    /**
+     * Validate a change from one stage to another for a record. Throws exception if invalid.
+     *
+     * @throws InvalidLifecycleStageTransitionException
+     */
+    public function validate(Model $record, ?LifecycleStage $fromStage, LifecycleStage $toStage, string $source = 'manual'): void
+    {
         // Initial stage assignment on new records is always allowed
         if ($fromStage === null || $fromStage === $toStage) {
             return;
@@ -193,7 +195,7 @@ class LifecycleStateMachine
         }
 
         // Data hygiene guard: Prevent unintended customer regression without designated source
-        if ($fromStage === LifecycleStage::Customer && in_array($toStage, [
+        if (in_array($fromStage, [LifecycleStage::Customer, LifecycleStage::Evangelist], true) && in_array($toStage, [
             LifecycleStage::Subscriber,
             LifecycleStage::Lead,
             LifecycleStage::MarketingQualifiedLead,
@@ -203,7 +205,7 @@ class LifecycleStateMachine
             $allowedSources = ['churn', 'recycle', 'downgrade', 'disqualified', 'refund'];
             if (! in_array(strtolower($source), $allowedSources, true)) {
                 throw new InvalidLifecycleStageTransitionException(
-                    "Customer records cannot be reverted to [{$toStage->label()}] with source [{$source}]. Use a designated churn or recycling source or force the transition."
+                    "{$fromStage->label()} records cannot be reverted to [{$toStage->label()}] with source [{$source}]. Use a designated churn or recycling source or force the transition."
                 );
             }
         }

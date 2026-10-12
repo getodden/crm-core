@@ -98,3 +98,12 @@ it('executes custom registered guards on stage transitions', function () {
     $transition = $action->execute($contactWithPhone, LifecycleStage::Opportunity);
     expect($transition->to_stage)->toBe(LifecycleStage::Opportunity);
 });
+
+it('prevents evangelist regression to lead without designated churn/recycle source', function () {
+    $contact = Contact::factory()->create(['lifecycle_stage' => LifecycleStage::Evangelist]);
+    $action = app(TransitionLifecycleStageAction::class);
+
+    expect(fn () => $action->execute($contact, LifecycleStage::Lead, source: 'manual'))
+        ->toThrow(InvalidLifecycleStageTransitionException::class)
+        ->and($action->execute($contact, LifecycleStage::Lead, source: 'churn')->from_stage)->toBe(LifecycleStage::Evangelist);
+});

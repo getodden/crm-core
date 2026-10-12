@@ -7,6 +7,7 @@ use Odden\Core\Actions\TransitionLifecycleStageAction;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
+use Odden\Core\Support\AuditSource;
 
 it('tracks changes to standard properties in audit history', function (): void {
     $contact = Contact::factory()->create([
@@ -21,7 +22,8 @@ it('tracks changes to standard properties in audit history', function (): void {
 
     $history = $contact->propertyHistory;
 
-    expect($history)->toHaveCount(2);
+    // The stage change also stamps became_customer_at.
+    expect($history->pluck('property_name')->sort()->values()->all())->toBe(['became_customer_at', 'email', 'lifecycle_stage']);
 
     $emailAudit = $history->firstWhere('property_name', 'email');
     expect($emailAudit)->not->toBeNull()
@@ -86,4 +88,38 @@ it('writes history when company enrichment fills industry and properties', funct
 
     expect($names)->toContain('industry')
         ->and($names)->toContain('enriched_at');
+});
+
+it('skips system timestamps and stores dates the same way on both sides', function (): void {
+    $company = Company::factory()->create(['last_health_calculated_at' => now()->subDay(), 'properties' => []]);
+    $contact = Contact::factory()->create(['last_contacted_at' => '2026-01-01 09:00:00']);
+
+    $company->update(['last_health_calculated_at' => now()]);
+    $contact->update(['last_contacted_at' => '2026-02-01 09:00:00']);
+
+    $dateAudit = $contact->propertyHistory()->where('property_name', 'last_contacted_at')->first();
+
+    expect($company->propertyHistory()->count())->toBe(0)
+        ->and($dateAudit->old_value)->toBe('2026-01-01 09:00:00')
+        ->and($dateAudit->new_value)->toBe('2026-02-01 09:00:00');
+});
+
+it('records the source the server sets, not a request header', function (): void {
+    request()->headers->set('X-Odden-Source', 'forged');
+    $contact = Contact::factory()->create(['first_name' => 'Ann']);
+
+    $contact->update(['first_name' => 'Anna']);
+    AuditSource::using('import', fn () => $contact->update(['first_name' => 'Annie']));
+
+    expect($contact->propertyHistory()->pluck('source')->sort()->values()->all())->toBe(['console', 'import']);
+});
+
+it('writes no history when the save fails', function (): void {
+    $contact = Contact::factory()->create(['first_name' => 'Ann']);
+
+    Contact::updating(fn (): bool => false);
+    $contact->first_name = 'Anna';
+    $contact->save();
+
+    expect($contact->propertyHistory()->count())->toBe(0);
 });

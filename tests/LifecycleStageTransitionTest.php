@@ -9,7 +9,9 @@ use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Events\LifecycleStageChanged;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
+use Odden\Core\Exceptions\InvalidLifecycleStageTransitionException;
 use Odden\Core\Models\LifecycleStageTransition;
+use Odden\Core\Support\LifecycleStateMachine;
 
 it('transitions contact lifecycle stage and records transition history', function () {
     Event::fake([LifecycleStageChanged::class]);
@@ -148,4 +150,62 @@ it('calculates cohort funnel velocity metrics across transitions', function () {
         ->and($mqlStats['average_duration_days'])->toBe(3.0)
         ->and($mqlStats['min_duration_days'])->toBe(2.0)
         ->and($mqlStats['max_duration_days'])->toBe(4.0);
+});
+
+it('records transitions and stamps timestamps when lifecycle_stage is saved directly', function (): void {
+    Event::fake([LifecycleStageChanged::class]);
+
+    $contact = Contact::factory()->create(['lifecycle_stage' => LifecycleStage::Lead, 'became_lead_at' => null]);
+
+    expect($contact->fresh()->became_lead_at)->not->toBeNull();
+
+    // As the panel's edit form or an import does.
+    $contact->update(['lifecycle_stage' => LifecycleStage::Customer]);
+
+    $transition = $contact->latestLifecycleTransition();
+
+    expect($contact->fresh()->became_customer_at)->not->toBeNull()
+        ->and($contact->lifecycleTransitions()->count())->toBe(1)
+        ->and($transition->from_stage)->toBe(LifecycleStage::Lead)
+        ->and($transition->to_stage)->toBe(LifecycleStage::Customer)
+        ->and($transition->source)->toBe('manual');
+
+    Event::assertDispatchedTimes(LifecycleStageChanged::class, 1);
+
+    // Saving other changes doesn't record a transition.
+    $contact->update(['first_name' => 'Renamed']);
+    expect($contact->lifecycleTransitions()->count())->toBe(1);
+});
+
+it('records one transition when the action changes the stage', function (): void {
+    Event::fake([LifecycleStageChanged::class]);
+    $contact = Contact::factory()->create(['lifecycle_stage' => LifecycleStage::Lead]);
+
+    $transition = app(TransitionLifecycleStageAction::class)->execute($contact, LifecycleStage::MarketingQualifiedLead, source: 'form', userId: 7);
+
+    expect($contact->lifecycleTransitions()->count())->toBe(1)
+        ->and($transition->source)->toBe('form')
+        ->and($transition->user_id)->toBe(7);
+
+    Event::assertDispatchedTimes(LifecycleStageChanged::class, 1);
+});
+
+it('does nothing when transitioning to the current stage', function (): void {
+    Event::fake([LifecycleStageChanged::class]);
+    $contact = Contact::factory()->create(['lifecycle_stage' => LifecycleStage::Customer]);
+
+    expect(app(TransitionLifecycleStageAction::class)->execute($contact, LifecycleStage::Customer))->toBeNull()
+        ->and($contact->lifecycleTransitions()->count())->toBe(0);
+
+    Event::assertNotDispatched(LifecycleStageChanged::class);
+});
+
+it('validates direct saves in strict mode', function (): void {
+    app(LifecycleStateMachine::class)->setStrict(true);
+    $contact = Contact::factory()->create(['lifecycle_stage' => LifecycleStage::Subscriber]);
+
+    expect(fn () => $contact->update(['lifecycle_stage' => LifecycleStage::Customer]))
+        ->toThrow(InvalidLifecycleStageTransitionException::class)
+        ->and($contact->fresh()->lifecycle_stage)->toBe(LifecycleStage::Subscriber)
+        ->and($contact->lifecycleTransitions()->count())->toBe(0);
 });
