@@ -83,6 +83,11 @@ return [
         'dns_cache_minutes' => 1440,
         'dns_failure_cache_minutes' => 5,
 
+        // The most a DNS check may take, in seconds; slower answers count as unknown. The
+        // nameservers asked: empty uses those in /etc/resolv.conf ("1.1.1.1", "10.0.0.2:53").
+        'dns_timeout_seconds' => env('ODDEN_EMAIL_DNS_TIMEOUT', 2),
+        'dns_nameservers' => [],
+
         // Extra disposable-provider domains and shared-mailbox local parts to flag as risky.
         'disposable_domains' => [],
         'role_local_parts' => [],
