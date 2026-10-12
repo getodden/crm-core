@@ -123,11 +123,17 @@ return [
     |--------------------------------------------------------------------------
     |
     | Configuration for automated domain and corporate data enrichment.
-    | Available drivers: "heuristic" (zero-external-API cost default)
+    | Available drivers: "heuristic" (no external API; it only returns what
+    | the domain itself tells it, never guessed industry, size or tech stack).
+    |
+    | logo_url: a logo service URL with a {domain} placeholder, for example
+    | "https://www.google.com/s2/favicons?domain={domain}&sz=128". Off by
+    | default, because using one sends company domains to that service.
     |
     */
     'enrichment' => [
         'driver' => env('ODDEN_ENRICHMENT_DRIVER', 'heuristic'),
         'auto_enrich' => false,
+        'logo_url' => env('ODDEN_ENRICHMENT_LOGO_URL'),
     ],
 ];

@@ -30,14 +30,6 @@ class EnrichCompanyAction
             return $company;
         }
 
-        // Fill industry if not already set
-        if (empty($company->industry) && isset($data['industry'])) {
-            $company->industry = $data['industry'];
-        }
-
-        // Merge properties
-        $currentProperties = is_array($company->properties) ? $company->properties : [];
-
         $enrichedFields = array_filter([
             'logo_url' => $data['logo_url'] ?? null,
             'tech_stack' => $data['tech_stack'] ?? null,
@@ -46,10 +38,22 @@ class EnrichCompanyAction
             'city' => $data['city'] ?? null,
             'country' => $data['country'] ?? null,
             'linkedin_url' => $data['linkedin_url'] ?? null,
-            'enriched_at' => now()->toIso8601String(),
         ], fn ($val) => $val !== null);
 
-        $company->properties = array_merge($currentProperties, $enrichedFields);
+        // A driver that learned nothing about the company leaves it untouched.
+        if ($enrichedFields === [] && empty($data['industry'])) {
+            return $company;
+        }
+
+        // Fill industry if not already set
+        if (empty($company->industry) && isset($data['industry'])) {
+            $company->industry = $data['industry'];
+        }
+
+        // Merge properties
+        $currentProperties = is_array($company->properties) ? $company->properties : [];
+
+        $company->properties = array_merge($currentProperties, $enrichedFields, ['enriched_at' => now()->toIso8601String()]);
         $company->save();
 
         event(new CompanyEnriched($company, $data));

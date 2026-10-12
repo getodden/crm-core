@@ -14,7 +14,10 @@ class HeuristicEnrichmentDriver implements EnrichmentDriver
     ) {}
 
     /**
-     * Enrich company metadata using heuristic domain intelligence and favicon services.
+     * Enrich company metadata from what the domain itself tells us. Nothing is guessed: industry,
+     * size and tech stack can't be known from a domain name, so this driver never returns them.
+     * A logo URL is only returned when `odden-core.enrichment.logo_url` names a logo service,
+     * because using one sends the company's domain to that service.
      *
      * @return array{
      *     name?: string,
@@ -38,75 +41,14 @@ class HeuristicEnrichmentDriver implements EnrichmentDriver
             return null;
         }
 
-        $name = $this->extractDomain->deriveCompanyName($clean);
-        $industry = $this->detectIndustry($clean);
-        $techStack = $this->detectTechStack($clean);
+        $data = ['name' => $this->extractDomain->deriveCompanyName($clean)];
 
-        return [
-            'name' => $name,
-            'industry' => $industry,
-            'employee_count_range' => '11-50',
-            'logo_url' => "https://www.google.com/s2/favicons?domain={$clean}&sz=128",
-            'tech_stack' => $techStack,
-            'description' => "{$name} corporate domain profile and tech intelligence.",
-        ];
-    }
+        $logoUrl = config('odden-core.enrichment.logo_url');
 
-    /**
-     * Infer primary industry vertical from domain tokens.
-     */
-    protected function detectIndustry(string $domain): string
-    {
-        $d = strtolower($domain);
-
-        if (str_ends_with($d, '.ai') || str_contains($d, 'ai.') || str_contains($d, 'deep') || str_contains($d, 'neural')) {
-            return 'Artificial Intelligence & Machine Learning';
+        if (is_string($logoUrl) && $logoUrl !== '') {
+            $data['logo_url'] = str_replace('{domain}', rawurlencode($clean), $logoUrl);
         }
 
-        if (str_contains($d, 'pay') || str_contains($d, 'fin') || str_contains($d, 'bank') || str_contains($d, 'crypto') || str_contains($d, 'capital')) {
-            return 'Financial Services & FinTech';
-        }
-
-        if (str_contains($d, 'cloud') || str_contains($d, 'host') || str_contains($d, 'infra') || str_contains($d, 'ops') || str_contains($d, 'stack')) {
-            return 'Cloud Infrastructure & DevOps';
-        }
-
-        if (str_contains($d, 'sec') || str_contains($d, 'guard') || str_contains($d, 'vault') || str_contains($d, 'auth') || str_contains($d, 'shield')) {
-            return 'Cybersecurity & Identity';
-        }
-
-        if (str_contains($d, 'shop') || str_contains($d, 'store') || str_contains($d, 'cart') || str_contains($d, 'commerce') || str_contains($d, 'retail')) {
-            return 'E-Commerce & Retail';
-        }
-
-        if (str_contains($d, 'health') || str_contains($d, 'med') || str_contains($d, 'care') || str_contains($d, 'bio') || str_contains($d, 'clinic')) {
-            return 'Healthcare & Life Sciences';
-        }
-
-        return 'Software & Technology';
-    }
-
-    /**
-     * Infer probable tech stack tools from domain indicators.
-     *
-     * @return list<string>
-     */
-    protected function detectTechStack(string $domain): array
-    {
-        $d = strtolower($domain);
-
-        if (str_contains($d, 'ai') || str_contains($d, 'neural')) {
-            return ['Python', 'OpenAI', 'PyTorch', 'AWS'];
-        }
-
-        if (str_contains($d, 'pay') || str_contains($d, 'fin')) {
-            return ['Stripe', 'Plaid', 'PostgreSQL', 'Docker'];
-        }
-
-        if (str_contains($d, 'cloud') || str_contains($d, 'dev')) {
-            return ['Kubernetes', 'Terraform', 'AWS', 'Go'];
-        }
-
-        return ['Laravel', 'PostgreSQL', 'TailwindCSS', 'Redis'];
+        return $data;
     }
 }

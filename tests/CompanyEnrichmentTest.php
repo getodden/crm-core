@@ -18,29 +18,49 @@ class CompanyEnrichmentTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_heuristic_driver_extracts_enrichment_data(): void
+    public function test_heuristic_driver_returns_only_what_the_domain_tells_it(): void
     {
         /** @var HeuristicEnrichmentDriver $driver */
         $driver = app(HeuristicEnrichmentDriver::class);
 
-        $aiData = $driver->enrich('anthropic.ai');
-        $this->assertNotNull($aiData);
-        $this->assertSame('Artificial Intelligence & Machine Learning', $aiData['industry']);
-        $this->assertContains('Python', $aiData['tech_stack']);
-        $this->assertStringContainsString('anthropic.ai', $aiData['logo_url']);
+        $aiData = $driver->enrich('https://www.anthropic.ai/');
+        $this->assertSame(['name'], array_keys($aiData ?? []));
 
-        $fintechData = $driver->enrich('squarepay.com');
-        $this->assertNotNull($fintechData);
-        $this->assertSame('Financial Services & FinTech', $fintechData['industry']);
-        $this->assertContains('Stripe', $fintechData['tech_stack']);
+        // "media" is not healthcare, and nothing here knows a company's size or tech stack.
+        $this->assertArrayNotHasKey('industry', $driver->enrich('socialmedia.com') ?? []);
 
-        $invalidData = $driver->enrich('invalid-no-tld');
-        $this->assertNull($invalidData);
+        $this->assertNull($driver->enrich('invalid-no-tld'));
+    }
+
+    public function test_heuristic_driver_only_builds_a_logo_url_when_a_logo_service_is_configured(): void
+    {
+        config(['odden-core.enrichment.logo_url' => 'https://logos.example.test/{domain}.png']);
+
+        $data = app(HeuristicEnrichmentDriver::class)->enrich('anthropic.ai');
+
+        $this->assertSame('https://logos.example.test/anthropic.ai.png', $data['logo_url'] ?? null);
+    }
+
+    public function test_heuristic_enrichment_writes_no_guesses_into_the_company(): void
+    {
+        Event::fake([CompanyEnriched::class]);
+
+        $company = Company::factory()->create(['domain' => 'deepmind.ai', 'industry' => null, 'properties' => []]);
+
+        app(EnrichCompanyAction::class)->execute($company);
+
+        $fresh = $company->fresh();
+        $this->assertNull($fresh->industry);
+        $this->assertNull($fresh->getProperty('employee_count_range'));
+        $this->assertNull($fresh->getProperty('tech_stack'));
+        $this->assertNull($fresh->getProperty('logo_url'));
+        Event::assertNotDispatched(CompanyEnriched::class);
     }
 
     public function test_enrich_company_action_enriches_company_and_dispatches_event(): void
     {
         Event::fake([CompanyEnriched::class]);
+        $this->fakeDriver();
 
         $company = Company::factory()->create([
             'domain' => 'deepmind.ai',
@@ -52,7 +72,7 @@ class CompanyEnrichmentTest extends TestCase
         $action = app(EnrichCompanyAction::class);
         $enriched = $action->execute($company);
 
-        $this->assertSame('Artificial Intelligence & Machine Learning', $enriched->industry);
+        $this->assertSame('Research', $enriched->industry);
         $this->assertSame('Existing note', $enriched->getProperty('custom_notes'));
         $this->assertNotNull($enriched->getProperty('logo_url'));
         $this->assertNotNull($enriched->getProperty('tech_stack'));
@@ -99,6 +119,7 @@ class CompanyEnrichmentTest extends TestCase
     public function test_create_company_action_with_enrich_flag_auto_enriches(): void
     {
         Event::fake([CompanyEnriched::class]);
+        $this->fakeDriver();
 
         /** @var CreateCompanyAction $action */
         $action = app(CreateCompanyAction::class);
@@ -109,9 +130,29 @@ class CompanyEnrichmentTest extends TestCase
         ], enrich: true);
 
         $this->assertSame('scale.ai', $company->domain);
-        $this->assertSame('Artificial Intelligence & Machine Learning', $company->industry);
+        $this->assertSame('Research', $company->industry);
         $this->assertNotNull($company->getProperty('logo_url'));
 
         Event::assertDispatched(CompanyEnriched::class);
+    }
+
+    /**
+     * Make the default driver one that returns fixed data.
+     */
+    private function fakeDriver(): void
+    {
+        app(EnrichmentManager::class)->extend('fake', new class implements EnrichmentDriver
+        {
+            public function enrich(string $domain): ?array
+            {
+                return [
+                    'industry' => 'Research',
+                    'tech_stack' => ['Python'],
+                    'logo_url' => "https://logos.example.test/{$domain}.png",
+                ];
+            }
+        });
+
+        config(['odden-core.enrichment.driver' => 'fake']);
     }
 }

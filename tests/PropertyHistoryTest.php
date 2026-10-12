@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use Odden\Core\Actions\EnrichCompanyAction;
 use Odden\Core\Actions\TransitionLifecycleStageAction;
+use Odden\Core\Contracts\EnrichmentDriver;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
 use Odden\Core\Support\AuditSource;
+use Odden\Core\Support\Enrichment\EnrichmentManager;
 
 it('tracks changes to standard properties in audit history', function (): void {
     $contact = Contact::factory()->create([
@@ -80,9 +82,16 @@ it('writes history when a lifecycle stage transition changes the stage', functio
 });
 
 it('writes history when company enrichment fills industry and properties', function (): void {
+    app(EnrichmentManager::class)->extend('fake', fn (): EnrichmentDriver => new class implements EnrichmentDriver
+    {
+        public function enrich(string $domain): ?array
+        {
+            return ['industry' => 'Research', 'city' => 'London'];
+        }
+    });
     $company = Company::factory()->create(['domain' => 'deepmind.ai', 'industry' => null, 'properties' => []]);
 
-    app(EnrichCompanyAction::class)->execute($company);
+    app(EnrichCompanyAction::class)->execute($company, 'fake');
 
     $names = $company->propertyHistory()->pluck('property_name')->all();
 
