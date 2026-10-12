@@ -20,10 +20,11 @@ class MergeCompaniesAction
 
     /**
      * Merge a secondary duplicate company into a primary company, inside a transaction.
-     * Merges fields and properties, moves everything Core owns (activities, associations, list
-     * memberships, property history, lifecycle transitions) to the primary, dispatches
-     * CompaniesMerged so other packages can move their records, recalculates the health score,
-     * and soft-deletes the secondary.
+     * Merges fields and properties, takes the further-along lifecycle stage (or the
+     * `lifecycle_stage` override, validated by the state machine), moves everything Core owns
+     * (activities, associations, list memberships, property history, lifecycle transitions) to
+     * the primary, dispatches CompaniesMerged so other packages can move their records,
+     * recalculates the health score, and soft-deletes the secondary.
      *
      * @param  array<string, mixed>  $fieldOverrides
      */
@@ -43,6 +44,10 @@ class MergeCompaniesAction
                     $primary->setAttribute($attr, $secondary->getAttribute($attr));
                 }
             }
+
+            // The lifecycle stage is set after the save, through the state machine
+            $chosenStage = $fieldOverrides['lifecycle_stage'] ?? null;
+            unset($fieldOverrides['lifecycle_stage']);
 
             // Apply explicit field overrides
             foreach ($fieldOverrides as $key => $value) {
@@ -65,6 +70,9 @@ class MergeCompaniesAction
             $this->merger->keepEarliestStageDates($primary, $secondary);
 
             $primary->save();
+
+            // Lifecycle stage: the further along of the two, unless the caller chose one
+            $this->merger->mergeLifecycleStage($primary, $secondary, $chosenStage);
 
             // 2. Move activities, associations (contacts and deals included), list memberships,
             //    property history, and lifecycle transitions

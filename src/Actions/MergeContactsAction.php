@@ -20,9 +20,11 @@ class MergeContactsAction
 
     /**
      * Merge a secondary duplicate contact into a primary contact, inside a transaction.
-     * Merges fields and properties, moves everything Core owns (activities, associations, list
-     * memberships, property history, lifecycle transitions) to the primary, dispatches
-     * ContactsMerged so other packages can move their records, and soft-deletes the secondary.
+     * Merges fields and properties, takes the further-along lifecycle stage (or the
+     * `lifecycle_stage` override, validated by the state machine), moves everything Core owns
+     * (activities, associations, list memberships, property history, lifecycle transitions) to
+     * the primary, dispatches ContactsMerged so other packages can move their records, and
+     * soft-deletes the secondary.
      *
      * @param  array<string, mixed>  $fieldOverrides
      */
@@ -36,12 +38,16 @@ class MergeContactsAction
 
         return DB::transaction(function () use ($primary, $secondary, $fieldOverrides): Contact {
             // 1. Fill empty primary fields from secondary
-            $fillableAttributes = ['first_name', 'last_name', 'phone', 'lifecycle_stage', 'lead_status', 'owner_id', 'team_id'];
+            $fillableAttributes = ['first_name', 'last_name', 'phone', 'lead_status', 'owner_id', 'team_id'];
             foreach ($fillableAttributes as $attr) {
                 if (empty($primary->getAttribute($attr)) && ! empty($secondary->getAttribute($attr))) {
                     $primary->setAttribute($attr, $secondary->getAttribute($attr));
                 }
             }
+
+            // The lifecycle stage is set after the save, through the state machine
+            $chosenStage = $fieldOverrides['lifecycle_stage'] ?? null;
+            unset($fieldOverrides['lifecycle_stage']);
 
             // Apply explicit field overrides
             foreach ($fieldOverrides as $key => $value) {
@@ -60,6 +66,9 @@ class MergeContactsAction
             $this->merger->keepEarliestStageDates($primary, $secondary);
 
             $primary->save();
+
+            // Lifecycle stage: the further along of the two, unless the caller chose one
+            $this->merger->mergeLifecycleStage($primary, $secondary, $chosenStage);
 
             // 2. Move activities, associations (deals included: Sales links them through
             //    associations), list memberships, property history, and lifecycle transitions

@@ -104,6 +104,39 @@ class LifecycleStateMachine
     }
 
     /**
+     * How far along the funnel a stage is: Subscriber lowest, then each stage in order up to
+     * Customer and Evangelist. Other is off the funnel and ranks below every funnel stage, since
+     * any stage can be reached from it. Customer and Evangelist rank above every pre-customer
+     * stage, so taking the higher rank never moves a customer backwards.
+     */
+    public function progressRank(LifecycleStage $stage): int
+    {
+        return match ($stage) {
+            LifecycleStage::Other => 0,
+            LifecycleStage::Subscriber => 1,
+            LifecycleStage::Lead => 2,
+            LifecycleStage::MarketingQualifiedLead => 3,
+            LifecycleStage::SalesQualifiedLead => 4,
+            LifecycleStage::Opportunity => 5,
+            LifecycleStage::Customer => 6,
+            LifecycleStage::Evangelist => 7,
+        };
+    }
+
+    /**
+     * The further-along of two stages by progressRank(), used when two records are merged.
+     * A tie, or a missing second stage, keeps the first.
+     */
+    public function furthestStage(?LifecycleStage $first, ?LifecycleStage $second): ?LifecycleStage
+    {
+        if ($first === null || $second === null) {
+            return $first ?? $second;
+        }
+
+        return $this->progressRank($second) > $this->progressRank($first) ? $second : $first;
+    }
+
+    /**
      * Get allowed destination stages for a given current stage.
      *
      * @return list<LifecycleStage>
