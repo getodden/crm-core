@@ -19,9 +19,11 @@ interface DealGateway
      * Create an open deal and associate it with the contact as `primary` (and with the
      * contact's first company when $associateCompany is set).
      *
-     * With no $pipelineId the first pipeline is used; with no $stageId the pipeline's first stage
-     * is used. The owner defaults to the contact's owner. Returns null when there is no usable
-     * pipeline or stage.
+     * With no $pipelineId the default active pipeline is used (or, when none is marked default,
+     * the first active one); with no $stageId the pipeline's first open stage (neither won nor
+     * lost) is used. A $stageId must be an open stage of that pipeline. The deal takes the
+     * contact's team and the configured default currency, and the owner defaults to the contact's
+     * owner. Returns null when there is no usable pipeline or stage.
      */
     public function createOpenDeal(
         Contact $contact,
