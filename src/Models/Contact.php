@@ -275,8 +275,10 @@ class Contact extends Model
     {
         // Addresses are stored lowercased and trimmed, so lookups by email can use the index.
         static::saving(function (Contact $contact): void {
-            if ($contact->isDirty('email') && is_string($contact->email)) {
-                $contact->email = ContactLookup::normalizeEmail($contact->email);
+            $email = $contact->getAttribute('email');
+
+            if ($contact->isDirty('email') && is_string($email)) {
+                $contact->email = ContactLookup::normalizeEmail($email);
             }
         });
 

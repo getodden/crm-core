@@ -7,9 +7,9 @@ use Odden\Core\Actions\CalculateFunnelVelocityAction;
 use Odden\Core\Actions\TransitionLifecycleStageAction;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Events\LifecycleStageChanged;
+use Odden\Core\Exceptions\InvalidLifecycleStageTransitionException;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
-use Odden\Core\Exceptions\InvalidLifecycleStageTransitionException;
 use Odden\Core\Models\LifecycleStageTransition;
 use Odden\Core\Support\LifecycleStateMachine;
 

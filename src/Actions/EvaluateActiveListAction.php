@@ -159,7 +159,7 @@ class EvaluateActiveListAction
         if (in_array($property, $tableColumns, true)) {
             $this->applyRuleToQuery($query, $property, $operator, $value);
         } else {
-            $this->applyRuleToQuery($query, "properties->{$property}", $operator, $value, json: true);
+            $this->applyRuleToQuery($query, "properties->{$property}", $operator, $value, jsonPath: explode('->', $property));
         }
     }
 
@@ -200,12 +200,13 @@ class EvaluateActiveListAction
      * Apply an individual filter rule to an Eloquent query.
      *
      * @param  Builder<covariant Model>  $query
+     * @param  list<string>|null  $jsonPath  the keys inside `properties`, when the column is a custom property
      */
-    protected function applyRuleToQuery(Builder $query, string $column, string $operator, mixed $value, bool $json = false): void
+    protected function applyRuleToQuery(Builder $query, string $column, string $operator, mixed $value, ?array $jsonPath = null): void
     {
         // JSON values come back as text on PostgreSQL and MySQL, so compare numbers as numbers.
-        if ($json && in_array($operator, ['>', '>=', '<', '<='], true) && is_numeric($value)) {
-            $query->whereRaw($this->numericJsonExpression($query, $column)." {$operator} ?", [$value + 0]);
+        if ($jsonPath !== null && in_array($operator, ['>', '>=', '<', '<='], true) && is_numeric($value)) {
+            $this->whereNumericProperty($query, $jsonPath, $operator, $value + 0);
 
             return;
         }
@@ -221,21 +222,51 @@ class EvaluateActiveListAction
     }
 
     /**
-     * A JSON value as a number, or NULL when it isn't one, so a stray string never fails the cast.
+     * Compare a custom property as a number. A value that isn't a number reads as NULL, so it never
+     * matches and a stray string never fails the cast.
      *
      * @param  Builder<covariant Model>  $query
+     * @param  list<string>  $path
      */
-    protected function numericJsonExpression(Builder $query, string $column): string
+    protected function whereNumericProperty(Builder $query, array $path, string $operator, int|float $value): void
     {
-        $wrapped = '('.$query->getQuery()->getGrammar()->wrap($column).')';
-        $number = "'^ *-{0,1}[0-9]+([.][0-9]+){0,1} *$'";
-
-        return match ($query->getConnection()->getDriverName()) {
-            'pgsql' => "(CASE WHEN {$wrapped} ~ {$number} THEN CAST({$wrapped} AS numeric) END)",
-            'mysql', 'mariadb' => "(CASE WHEN {$wrapped} REGEXP {$number} THEN CAST({$wrapped} AS DECIMAL(65,10)) END)",
-            default => "(CASE WHEN typeof({$wrapped}) IN ('integer', 'real') THEN {$wrapped}"
-                ." WHEN typeof({$wrapped}) = 'text' AND trim({$wrapped}) <> '' AND trim({$wrapped}) NOT GLOB '*[^0-9.-]*'"
-                ." THEN CAST(trim({$wrapped}) AS REAL) END)",
+        $comparison = match ($operator) {
+            '>' => '>',
+            '>=' => '>=',
+            '<' => '<',
+            default => '<=',
         };
+
+        $quoted = array_map(fn (string $key): string => '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $key).'"', $path);
+        $number = '^ *-{0,1}[0-9]+([.][0-9]+){0,1} *$';
+
+        switch ($query->getModel()->getConnection()->getDriverName()) {
+            case 'pgsql':
+                $array = '{'.implode(',', $quoted).'}';
+                $query->whereRaw(
+                    "(CASE WHEN (properties #>> CAST(? AS text[])) ~ ? THEN CAST(properties #>> CAST(? AS text[]) AS numeric) END) {$comparison} ?",
+                    [$array, $number, $array, $value],
+                );
+                break;
+
+            case 'mysql':
+            case 'mariadb':
+                $jsonPath = '$.'.implode('.', $quoted);
+                $query->whereRaw(
+                    "(CASE WHEN json_unquote(json_extract(properties, ?)) REGEXP ? THEN CAST(json_unquote(json_extract(properties, ?)) AS DECIMAL(65,10)) END) {$comparison} ?",
+                    [$jsonPath, $number, $jsonPath, $value],
+                );
+                break;
+
+            default:
+                $jsonPath = '$.'.implode('.', $quoted);
+                $query->whereRaw(
+                    "(CASE WHEN json_type(properties, ?) IN ('integer', 'real') THEN json_extract(properties, ?)"
+                    ." WHEN json_type(properties, ?) = 'text' AND trim(json_extract(properties, ?)) <> ''"
+                    ." AND trim(json_extract(properties, ?)) NOT GLOB '*[^0-9.-]*'"
+                    ." THEN CAST(trim(json_extract(properties, ?)) AS REAL) END) {$comparison} ?",
+                    [$jsonPath, $jsonPath, $jsonPath, $jsonPath, $jsonPath, $jsonPath, $value],
+                );
+        }
     }
 }
