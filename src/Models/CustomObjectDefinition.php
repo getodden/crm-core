@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Odden\Core\Traits\BelongsToTeam;
+use Odden\Core\Traits\HasNamePerTeam;
 
 /**
  * @property int $id
@@ -25,6 +26,7 @@ use Odden\Core\Traits\BelongsToTeam;
 class CustomObjectDefinition extends Model
 {
     use BelongsToTeam;
+    use HasNamePerTeam;
 
     /**
      * The attributes that are mass assignable.

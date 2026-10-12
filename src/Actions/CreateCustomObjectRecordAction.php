@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Actions;
 
 use InvalidArgumentException;
+use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Events\CustomObjectRecordCreated;
 use Odden\Core\Models\CustomObjectDefinition;
 use Odden\Core\Models\CustomObjectRecord;
@@ -21,7 +22,7 @@ class CreateCustomObjectRecordAction
         array $attributes
     ): CustomObjectRecord {
         if (is_string($definition)) {
-            $found = CustomObjectDefinition::where('name', $definition)->first();
+            $found = CustomObjectDefinition::findForTeam($definition, $attributes['team_id'] ?? null, app(TenantContext::class)->id());
             if ($found === null) {
                 throw new InvalidArgumentException("Custom object definition [{$definition}] does not exist.");
             }

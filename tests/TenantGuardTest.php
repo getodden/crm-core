@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Odden\Core\Actions\MergeCompaniesAction;
 use Odden\Core\Actions\MergeContactsAction;
 use Odden\Core\Contracts\TenantContext;
@@ -111,4 +114,23 @@ it('refuses to merge companies of different tenants', function (): void {
 
 it('reads null for models without a tenant column', function (): void {
     expect(app(TenantGuard::class)->tenantOf(Contact::factory()->create()))->toBeNull();
+});
+
+it('only applies association types from the active tenant', function (): void {
+    Schema::table('odden_association_types', fn (Blueprint $table) => $table->unsignedBigInteger('tenant_id')->nullable());
+    DB::table('odden_association_types')->insert([
+        'name' => 'reseller', 'label' => 'Reseller', 'cardinality' => 'one_to_one', 'tenant_id' => 2, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    inTenant(1);
+    $company = ownedBy(Company::factory()->create(), 1);
+    $contact = ownedBy(Contact::factory()->create(), 1);
+
+    try {
+        expect($company->associateWith($contact, 'reseller')->association_type_id)->toBeNull();
+    } finally {
+        // MySQL commits on DDL, so don't leave the column for later tests.
+        DB::table('odden_association_types')->where('name', 'reseller')->delete();
+        Schema::table('odden_association_types', fn (Blueprint $table) => $table->dropColumn('tenant_id'));
+    }
 });

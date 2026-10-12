@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Odden\Core\Enums\AssociationCardinality;
 use Odden\Core\Exceptions\SystemAssociationTypeException;
 use Odden\Core\Traits\BelongsToTeam;
+use Odden\Core\Traits\HasNamePerTeam;
 
 /**
  * @property int $id
@@ -27,6 +28,7 @@ use Odden\Core\Traits\BelongsToTeam;
 class AssociationType extends Model
 {
     use BelongsToTeam;
+    use HasNamePerTeam;
 
     /**
      * The attributes that are mass assignable.
@@ -97,11 +99,24 @@ class AssociationType extends Model
     }
 
     /**
-     * Resolve the appropriate label based on the viewing record.
+     * Resolve the appropriate label based on the viewing record. Pass the association when both
+     * ends can be the same type (company to company), where only the link knows which side the
+     * record is on.
      */
-    public function getLabelFor(Model $record): string
+    public function getLabelFor(Model $record, ?Association $association = null): string
     {
-        if ($this->reverse_label !== null && $this->to_record_type !== null && $record->getMorphClass() === $this->to_record_type) {
+        if ($this->reverse_label === null) {
+            return $this->label;
+        }
+
+        if ($association !== null) {
+            $isChild = $association->child_type === $record->getMorphClass()
+                && (string) $association->child_id === (string) $record->getKey();
+
+            return $isChild ? $this->reverse_label : $this->label;
+        }
+
+        if ($this->to_record_type !== null && $record->getMorphClass() === $this->to_record_type) {
             return $this->reverse_label;
         }
 

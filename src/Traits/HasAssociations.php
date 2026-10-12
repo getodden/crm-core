@@ -148,7 +148,7 @@ trait HasAssociations
             ->where('child_type', $targetMorph)
             ->where(function (Builder $q) use ($label): void {
                 $q->where('label', $label)
-                    ->orWhereHas('associationType', fn (Builder $sub) => $sub->where('label', $label)->orWhere('reverse_label', $label));
+                    ->orWhereHas('associationType', fn (Builder $sub) => $sub->where('label', $label));
             })
             ->pluck('child_id');
 
@@ -158,8 +158,12 @@ trait HasAssociations
             ->where('child_id', $this->getKey())
             ->where('parent_type', $targetMorph)
             ->where(function (Builder $q) use ($label): void {
-                $q->where('label', $label)
-                    ->orWhereHas('associationType', fn (Builder $sub) => $sub->where('label', $label)->orWhere('reverse_label', $label));
+                // Seen from the child, the parent carries the type's reverse label. A link without
+                // a reverse label reads the same from both sides.
+                $q->whereHas('associationType', fn (Builder $sub) => $sub->where('reverse_label', $label))
+                    ->orWhere(fn (Builder $symmetric) => $symmetric
+                        ->where(fn (Builder $sub) => $sub->where('label', $label)->orWhereHas('associationType', fn (Builder $type) => $type->where('label', $label)))
+                        ->whereDoesntHave('associationType', fn (Builder $type) => $type->whereNotNull('reverse_label')));
             })
             ->pluck('parent_id');
 

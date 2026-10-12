@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Odden\Core\Actions;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Odden\Core\Enums\AssociationCardinality;
 use Odden\Core\Events\RecordsAssociated;
 use Odden\Core\Exceptions\CardinalityViolationException;
@@ -38,40 +40,47 @@ class AssociateRecordsAction
             $label ??= $associationType->label;
         } elseif (is_string($type)) {
             $typeName = $type;
-            /** @var AssociationType|null $foundType */
-            $foundType = AssociationType::where('name', $type)->first();
-            $associationType = $foundType;
+            $associationType = AssociationType::findForRecord($type, $parent);
             if ($associationType !== null) {
                 $label ??= $associationType->label;
             }
         }
 
-        // Validate record types and cardinality constraints
         if ($associationType !== null) {
             $this->enforceRecordTypes($parent, $child, $associationType);
-            $this->enforceCardinality($parent, $child, $associationType);
         }
 
-        /** @var Association $association */
-        $association = Association::firstOrNew([
-            'parent_type' => $parent->getMorphClass(),
-            'parent_id' => $parent->getKey(),
-            'child_type' => $child->getMorphClass(),
-            'child_id' => $child->getKey(),
-            'type' => $typeName,
-        ]);
+        // The cardinality check and the write happen under a lock on the type, so two
+        // concurrent links can't both pass the check.
+        [$association, $isNew] = DB::transaction(function () use ($parent, $child, $associationType, $typeName, $label): array {
+            if ($associationType !== null && $associationType->cardinality !== AssociationCardinality::ManyToMany) {
+                AssociationType::query()->whereKey($associationType->id)->lockForUpdate()->first();
+                $this->enforceCardinality($parent, $child, $associationType);
+            }
 
-        $isNew = ! $association->exists;
+            /** @var Association $association */
+            $association = Association::firstOrNew([
+                'parent_type' => $parent->getMorphClass(),
+                'parent_id' => $parent->getKey(),
+                'child_type' => $child->getMorphClass(),
+                'child_id' => $child->getKey(),
+                'type' => $typeName,
+            ]);
 
-        if ($associationType !== null) {
-            $association->association_type_id = $associationType->id;
-        }
+            $isNew = ! $association->exists;
 
-        if ($label !== null) {
-            $association->label = $label;
-        }
+            if ($associationType !== null) {
+                $association->association_type_id = $associationType->id;
+            }
 
-        $association->save();
+            if ($label !== null) {
+                $association->label = $label;
+            }
+
+            $association->save();
+
+            return [$association, $isNew];
+        });
 
         if ($isNew) {
             event(new RecordsAssociated($association));
@@ -113,54 +122,56 @@ class AssociateRecordsAction
 
     /**
      * Enforce cardinality rules for association types.
+     *
+     * When the type names two different record types, a record's type decides its side, whichever
+     * way round the records were passed: linking a contact to a second company is refused whether
+     * it's called on the company or on the contact.
      */
     protected function enforceCardinality(Model $parent, Model $child, AssociationType $type): void
     {
-        if ($type->cardinality === AssociationCardinality::OneToOne) {
-            // Check if parent is already linked to another child of this type
-            $parentLinked = Association::query()
-                ->where('association_type_id', $type->id)
-                ->where('parent_type', $parent->getMorphClass())
-                ->where('parent_id', $parent->getKey())
-                ->where(function ($q) use ($child): void {
-                    $q->where('child_type', '!=', $child->getMorphClass())
-                        ->orWhere('child_id', '!=', $child->getKey());
-                })
-                ->exists();
+        $oriented = $type->from_record_type !== null && $type->to_record_type !== null
+            && $type->from_record_type !== $type->to_record_type;
 
-            if ($parentLinked) {
+        if ($oriented && $parent->getMorphClass() === $type->to_record_type) {
+            [$parent, $child] = [$child, $parent];
+        }
+
+        if ($type->cardinality === AssociationCardinality::OneToOne) {
+            if ($this->linkedToAnother($type, $parent, 'parent', $child, $oriented)) {
                 throw new CardinalityViolationException("Association type [{$type->name}] has One-to-One cardinality and parent record already has an association.");
             }
 
-            // Check if child is already linked to another parent of this type
-            $childLinked = Association::query()
-                ->where('association_type_id', $type->id)
-                ->where('child_type', $child->getMorphClass())
-                ->where('child_id', $child->getKey())
-                ->where(function ($q) use ($parent): void {
-                    $q->where('parent_type', '!=', $parent->getMorphClass())
-                        ->orWhere('parent_id', '!=', $parent->getKey());
-                })
-                ->exists();
-
-            if ($childLinked) {
+            if ($this->linkedToAnother($type, $child, 'child', $parent, $oriented)) {
                 throw new CardinalityViolationException("Association type [{$type->name}] has One-to-One cardinality and child record is already associated with another record.");
             }
         } elseif ($type->cardinality === AssociationCardinality::OneToMany) {
             // In One-to-Many: a child can only belong to at most one parent
-            $childLinked = Association::query()
-                ->where('association_type_id', $type->id)
-                ->where('child_type', $child->getMorphClass())
-                ->where('child_id', $child->getKey())
-                ->where(function ($q) use ($parent): void {
-                    $q->where('parent_type', '!=', $parent->getMorphClass())
-                        ->orWhere('parent_id', '!=', $parent->getKey());
-                })
-                ->exists();
-
-            if ($childLinked) {
+            if ($this->linkedToAnother($type, $child, 'child', $parent, $oriented)) {
                 throw new CardinalityViolationException("Association type [{$type->name}] has One-to-Many cardinality and child record already belongs to a parent.");
             }
         }
+    }
+
+    /**
+     * Whether $record already has a link of this type, on the given side (or on either side when
+     * the type is oriented by record type), to a record other than $other.
+     */
+    protected function linkedToAnother(AssociationType $type, Model $record, string $side, Model $other, bool $eitherSide): bool
+    {
+        return Association::query()
+            ->where('association_type_id', $type->id)
+            ->where(function (Builder $query) use ($record, $side, $other, $eitherSide): void {
+                foreach ($eitherSide ? ['parent', 'child'] : [$side] as $recordSide) {
+                    $otherSide = $recordSide === 'parent' ? 'child' : 'parent';
+
+                    $query->orWhere(fn (Builder $link) => $link
+                        ->where("{$recordSide}_type", $record->getMorphClass())
+                        ->where("{$recordSide}_id", $record->getKey())
+                        ->where(fn (Builder $q) => $q
+                            ->where("{$otherSide}_type", '!=', $other->getMorphClass())
+                            ->orWhere("{$otherSide}_id", '!=', $other->getKey())));
+                }
+            })
+            ->exists();
     }
 }
