@@ -72,13 +72,16 @@ return [
     | "check_dns" is applied when a contact is created through CreateContactAction;
     | set it to false to keep that step out of the request and run
     | ValidateContactEmailAction from a queue instead. Definite answers are cached
-    | per domain for "dns_cache_minutes".
+    | per domain for "dns_cache_minutes"; failed lookups (the resolver timed out
+    | or errored) for "dns_failure_cache_minutes", so they aren't retried for
+    | every contact on that domain.
     |
     */
     'email_validation' => [
         'enabled' => env('ODDEN_EMAIL_VALIDATION', true),
         'check_dns' => env('ODDEN_EMAIL_CHECK_DNS', true),
         'dns_cache_minutes' => 1440,
+        'dns_failure_cache_minutes' => 5,
 
         // Extra disposable-provider domains and shared-mailbox local parts to flag as risky.
         'disposable_domains' => [],

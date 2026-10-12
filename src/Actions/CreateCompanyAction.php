@@ -17,8 +17,7 @@ class CreateCompanyAction
     public function execute(array $attributes, bool $enrich = false): Company
     {
         if (isset($attributes['domain']) && is_string($attributes['domain'])) {
-            $domain = preg_replace('#^https?://#', '', strtolower(trim($attributes['domain'])));
-            $attributes['domain'] = rtrim((string) $domain, '/');
+            $attributes['domain'] = Company::normalizeDomain($attributes['domain']);
         }
 
         $company = Company::create($attributes);

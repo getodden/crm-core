@@ -12,7 +12,9 @@ use Throwable;
  * Resolves mail routes through the system DNS resolver, caching definite answers per domain.
  *
  * A list of 100,000 addresses usually has a few thousand distinct domains, so the cache turns
- * an import into a few thousand lookups. A lookup that failed is never cached.
+ * an import into a few thousand lookups. A lookup that failed (a timeout, a resolver error) is
+ * remembered only briefly, so an unreachable domain doesn't stall every contact created for it
+ * but is retried soon after.
  */
 class SystemMailRouteResolver implements MailRouteResolver
 {
@@ -33,10 +35,18 @@ class SystemMailRouteResolver implements MailRouteResolver
             return $cached;
         }
 
+        $failureTtl = (int) config('odden-core.email_validation.dns_failure_cache_minutes', 5);
+
+        if ($failureTtl > 0 && $this->remembered($key.':failed') !== null) {
+            return null;
+        }
+
         $result = $this->lookup($domain);
 
         if ($result !== null && $ttl > 0) {
             $this->remember($key, $result, $ttl);
+        } elseif ($result === null && $failureTtl > 0) {
+            $this->remember($key.':failed', true, $failureTtl);
         }
 
         return $result;

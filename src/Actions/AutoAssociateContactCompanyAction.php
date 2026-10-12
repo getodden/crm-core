@@ -50,11 +50,12 @@ class AutoAssociateContactCompanyAction
             $query->where(function ($q) use ($contact): void {
                 $q->where('team_id', $contact->team_id)
                     ->orWhereNull('team_id');
-            });
+            })->orderByRaw('CASE WHEN team_id IS NULL THEN 1 ELSE 0 END');
         }
 
+        // The team's own company first, then the oldest, so the same company is picked every time.
         /** @var Company|null $company */
-        $company = $query->first();
+        $company = $query->orderBy((new Company)->getQualifiedKeyName())->first();
 
         if ($company !== null) {
             $this->associateRecords->execute($contact, $company, $associationType);

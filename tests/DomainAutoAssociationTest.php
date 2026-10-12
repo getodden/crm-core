@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Odden\Core\Actions\AutoAssociateContactCompanyAction;
+use Odden\Core\Actions\CreateCompanyAction;
 use Odden\Core\Actions\CreateContactAction;
 use Odden\Core\Actions\ExtractCorporateDomainAction;
 use Odden\Core\Models\Company;
@@ -110,4 +111,28 @@ it('integrates auto-association seamlessly into CreateContactAction', function (
     $contact->refresh();
     expect($contact->companies)->toHaveCount(1)
         ->and($contact->companies->first()->id)->toBe($existing->id);
+});
+
+it('stores company domains as a bare host, so auto-association finds them', function (string $website): void {
+    $company = app(CreateCompanyAction::class)->execute(['name' => 'Acme', 'domain' => $website]);
+
+    expect($company->domain)->toBe('acme.com')
+        ->and(Company::whereDomain($website)->first()?->id)->toBe($company->id)
+        ->and(app(AutoAssociateContactCompanyAction::class)->execute(Contact::factory()->create(['email' => 'sam@acme.com']))?->id)->toBe($company->id);
+})->with([
+    'https://www.Acme.com/about',
+    'www.acme.com',
+    'acme.com:443/',
+    'http://acme.com?ref=ad',
+]);
+
+it('picks the same company every time when several share a domain', function (): void {
+    $older = Company::factory()->create(['domain' => 'globex.com', 'team_id' => null]);
+    $teamCompany = Company::factory()->create(['domain' => 'globex.com', 'team_id' => 4]);
+    Company::factory()->create(['domain' => 'globex.com', 'team_id' => null]);
+
+    $action = app(AutoAssociateContactCompanyAction::class);
+
+    expect($action->execute(Contact::factory()->create(['email' => 'a@globex.com']))?->id)->toBe($older->id)
+        ->and($action->execute(Contact::factory()->create(['email' => 'b@globex.com', 'team_id' => 4]))?->id)->toBe($teamCompany->id);
 });

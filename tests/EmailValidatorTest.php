@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Odden\Core\Enums\EmailStatus;
 use Odden\Core\Enums\EmailStatusReason;
 use Odden\Core\Support\EmailValidator;
+use Odden\Core\Support\SystemMailRouteResolver;
 use Odden\Core\Tests\Fixtures\FakeMailRouteResolver;
 
 function checkEmail(string $email, bool $dns = true)
@@ -117,4 +118,35 @@ it('skips the DNS lookup for consumer providers it already knows accept mail', f
     checkEmail('dana@gmail.com');
 
     expect(FakeMailRouteResolver::$lookups)->toBe(0);
+});
+
+it('does not mistake real domains near a short popular name for typos', function (string $domain): void {
+    expect(checkEmail("dana@{$domain}")->reason)->not->toBe(EmailStatusReason::Typo);
+})->with(['aon.com', 'aoc.com', 'lime.com', 'love.com', 'msm.com']);
+
+it('still flags a typo in the rest of a short popular domain', function (): void {
+    expect(checkEmail('dana@aol.con')->suggestion)->toBe('dana@aol.com');
+});
+
+it('remembers a failed DNS lookup briefly instead of retrying it for every contact', function (): void {
+    $resolver = new class extends SystemMailRouteResolver
+    {
+        public int $lookups = 0;
+
+        protected function lookup(string $domain): ?bool
+        {
+            $this->lookups++;
+
+            return null;
+        }
+    };
+
+    expect($resolver->acceptsMail('slow.example'))->toBeNull()
+        ->and($resolver->acceptsMail('slow.example'))->toBeNull()
+        ->and($resolver->lookups)->toBe(1);
+
+    $this->travel(6)->minutes();
+
+    expect($resolver->acceptsMail('slow.example'))->toBeNull()
+        ->and($resolver->lookups)->toBe(2);
 });

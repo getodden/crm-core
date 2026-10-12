@@ -225,7 +225,22 @@ class Company extends Model
      */
     public function scopeWhereDomain(Builder $query, string $domain): Builder
     {
-        return $query->where('domain', strtolower(trim($domain)));
+        return $query->where('domain', static::normalizeDomain($domain));
+    }
+
+    /**
+     * A website address reduced to its host: lowercased and trimmed, without the scheme, a
+     * leading `www.`, a port, or anything after the host (https://www.Acme.com/about → acme.com).
+     */
+    public static function normalizeDomain(string $domain): string
+    {
+        $domain = strtolower(trim($domain));
+        $domain = preg_replace('#^[a-z][a-z0-9+.-]*://#', '', $domain) ?? $domain;
+        $domain = preg_replace('#[/?\#].*$#s', '', $domain) ?? $domain;
+        $domain = preg_replace('#:\d+$#', '', $domain) ?? $domain;
+        $domain = rtrim($domain, '.');
+
+        return str_starts_with($domain, 'www.') ? substr($domain, 4) : $domain;
     }
 
     /**

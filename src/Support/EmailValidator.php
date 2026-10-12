@@ -186,7 +186,7 @@ class EmailValidator
         }
 
         foreach (self::POPULAR_DOMAINS as $popular) {
-            if ($this->isSingleTypo($domain, $popular)) {
+            if ($this->isSingleTypo($domain, $popular) && ! $this->isOtherShortName($domain, $popular)) {
                 return $popular;
             }
         }
@@ -225,6 +225,17 @@ class EmailValidator
         }
 
         return false;
+    }
+
+    /**
+     * One edit away from a short name such as aol, msn or live is usually another real domain
+     * (aon.com, aoc.com, lime.com), so for those only a typo in the rest (aol.con) counts.
+     */
+    protected function isOtherShortName(string $domain, string $popular): bool
+    {
+        $name = explode('.', $popular, 2)[0];
+
+        return strlen($name) < 5 && explode('.', $domain, 2)[0] !== $name;
     }
 
     protected function isRoleAddress(string $local): bool
