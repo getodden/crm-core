@@ -218,7 +218,8 @@ it('syncs memberships without binding every matching id', function (): void {
     expect($list->syncActiveMembers())->toBe(33_000)
         ->and($list->memberships()->count())->toBe(33_000);
 
-    DB::table('odden_contacts')->where('id', '<=', 10)->update(['lifecycle_stage' => 'customer']);
+    $firstTen = DB::table('odden_contacts')->orderBy('id')->limit(10)->pluck('id');
+    DB::table('odden_contacts')->whereIn('id', $firstTen)->update(['lifecycle_stage' => 'customer']);
 
     expect($list->syncActiveMembers())->toBe(32_990)
         ->and($list->memberships()->count())->toBe(32_990);

@@ -74,7 +74,7 @@ test('merging contacts moves property history to the primary', function () {
 
 test('merging contacts moves lifecycle stage transitions and keeps the earliest stage dates', function () {
     $primary = Contact::factory()->create(['became_lead_at' => now()->subDays(5), 'became_customer_at' => null]);
-    $secondary = Contact::factory()->create(['became_lead_at' => now()->subDays(40), 'became_customer_at' => now()->subDay()]);
+    $secondary = Contact::factory()->create(['lifecycle_stage' => LifecycleStage::Lead, 'became_lead_at' => now()->subDays(40), 'became_customer_at' => now()->subDay()]);
     app(TransitionLifecycleStageAction::class)->execute($secondary, LifecycleStage::Opportunity, force: true);
 
     $merged = mergeContacts($primary, $secondary);
