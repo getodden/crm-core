@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Traits;
 
 use BackedEnum;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Odden\Core\Models\PropertyHistory;
@@ -28,8 +29,8 @@ trait AuditsProperties
 
     /**
      * Boot the trait to track property updates. History is written once the update has been
-     * saved, so a failed save leaves none behind, and old and new values are both the raw stored
-     * form, so a date reads the same on both sides.
+     * saved, so a failed save leaves none behind. Old and new values are both read through the
+     * model's casts and written the same way, so a date or a decimal reads alike on both sides.
      */
     public static function bootAuditsProperties(): void
     {
@@ -42,20 +43,21 @@ trait AuditsProperties
                     'auditable_type' => $model->getMorphClass(),
                     'auditable_id' => $model->getKey(),
                     'property_name' => $name,
-                    'old_value' => self::auditValue($old),
-                    'new_value' => self::auditValue($new),
+                    'old_value' => self::auditValue($model, $old),
+                    'new_value' => self::auditValue($model, $new),
                     'user_id' => $userId,
                     'source' => $source,
                     'created_at' => now(),
                 ]);
             };
 
-            foreach ($model->getChanges() as $key => $newValue) {
+            foreach (array_keys($model->getChanges()) as $key) {
                 if (in_array($key, self::$auditIgnoredAttributes, true)) {
                     continue;
                 }
 
-                $oldValue = $model->getRawOriginal($key);
+                $oldValue = $model->getOriginal($key);
+                $newValue = $model->getAttribute($key);
 
                 if ($key === 'properties') {
                     // Diff the dynamic properties array
@@ -91,11 +93,13 @@ trait AuditsProperties
         return is_array($value) ? $value : [];
     }
 
-    private static function auditValue(mixed $value): ?string
+    private static function auditValue(Model $model, mixed $value): ?string
     {
         return match (true) {
             $value === null => null,
             $value instanceof BackedEnum => (string) $value->value,
+            $value instanceof DateTimeInterface => $model->fromDateTime($value),
+            is_bool($value) => $value ? '1' : '0',
             is_scalar($value) => (string) $value,
             default => (string) json_encode($value),
         };
