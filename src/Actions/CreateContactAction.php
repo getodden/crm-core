@@ -7,6 +7,7 @@ namespace Odden\Core\Actions;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Events\ContactCreated;
 use Odden\Core\Models\Contact;
+use Odden\Core\Support\ContactLookup;
 
 class CreateContactAction
 {
@@ -21,7 +22,7 @@ class CreateContactAction
         bool $createCompanyIfMissing = false
     ): Contact {
         if (isset($attributes['email'])) {
-            $attributes['email'] = strtolower(trim((string) $attributes['email']));
+            $attributes['email'] = ContactLookup::normalizeEmail((string) $attributes['email']);
         }
 
         if (isset($attributes['lifecycle_stage']) && is_string($attributes['lifecycle_stage'])) {

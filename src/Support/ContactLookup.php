@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Odden\Core\Support;
 
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Support\Facades\Cache;
+use Odden\Core\Actions\CreateContactAction;
 use Odden\Core\Models\Contact;
 
 /**
@@ -11,11 +14,9 @@ use Odden\Core\Models\Contact;
  *
  * Every entry point that turns an email address into a contact (the Service portal, chat widget
  * and inbound email, Sales meeting booking) goes through here, so one person is one contact
- * however they type their address. New contacts are stored with the email lowercased and
- * trimmed. The lookup first tries an exact match on the normalized address, which can use the
- * email index and finds every contact stored this way; only when that finds nothing does it
- * compare LOWER(TRIM(email)), which also matches older contacts saved with mixed case or
- * whitespace.
+ * however they type their address. Contacts are always saved with the email lowercased and
+ * trimmed (older rows were normalized by a migration), so the lookup is an exact match on the
+ * normalized address, which uses the email index.
  */
 class ContactLookup
 {
@@ -25,10 +26,7 @@ class ContactLookup
     }
 
     /**
-     * The contact whose email matches, ignoring case and surrounding whitespace.
-     *
-     * The oldest contact stored with exactly the normalized address wins; failing that, the
-     * oldest contact whose address matches once lowercased and trimmed.
+     * The contact whose email matches, ignoring case and surrounding whitespace. The oldest wins.
      */
     public static function findByEmail(string $email): ?Contact
     {
@@ -46,35 +44,31 @@ class ContactLookup
             ->orderBy($key)
             ->first();
 
-        if ($contact !== null) {
-            return $contact;
-        }
-
-        /** @var Contact|null $contact */
-        $contact = Contact::query()
-            ->whereRaw('LOWER(TRIM(email)) = ?', [$normalized])
-            ->orderBy($key)
-            ->first();
-
         return $contact;
     }
 
     /**
-     * The matching contact, or a new one with the normalized email and the given attributes.
+     * The matching contact, or a new one created through CreateContactAction (so ContactCreated
+     * fires and the email is checked) with the normalized email and the given attributes.
+     *
+     * Two callers creating the same address at once are serialized with a cache lock, so only one
+     * contact is created.
      *
      * @param  array<string, mixed>  $attributes
      */
     public static function findOrCreate(string $email, array $attributes = []): Contact
     {
-        $contact = self::findByEmail($email);
+        $normalized = self::normalizeEmail($email);
 
-        if ($contact !== null) {
-            return $contact;
+        $findOrCreate = function () use ($normalized, $attributes): Contact {
+            return self::findByEmail($normalized)
+                ?? app(CreateContactAction::class)->execute([...$attributes, 'email' => $normalized]);
+        };
+
+        if ($normalized === '' || ! Cache::getStore() instanceof LockProvider) {
+            return $findOrCreate();
         }
 
-        /** @var Contact $created */
-        $created = Contact::query()->create([...$attributes, 'email' => self::normalizeEmail($email)]);
-
-        return $created;
+        return Cache::lock(CacheKey::for('odden:contact-email:'.sha1($normalized)), 10)->block(10, $findOrCreate);
     }
 }

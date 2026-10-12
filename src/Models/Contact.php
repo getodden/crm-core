@@ -17,6 +17,7 @@ use Odden\Core\Enums\EmailStatus;
 use Odden\Core\Enums\EmailStatusReason;
 use Odden\Core\Enums\LeadStatus;
 use Odden\Core\Enums\LifecycleStage;
+use Odden\Core\Support\ContactLookup;
 use Odden\Core\Support\EmailValidator;
 use Odden\Core\Support\UserModel;
 use Odden\Core\Traits\AuditsProperties;
@@ -261,7 +262,7 @@ class Contact extends Model
      */
     public function scopeWhereEmail(Builder $query, string $email): Builder
     {
-        return $query->where('email', strtolower(trim($email)));
+        return $query->where('email', ContactLookup::normalizeEmail($email));
     }
 
     /**
@@ -272,6 +273,13 @@ class Contact extends Model
      */
     protected static function booted(): void
     {
+        // Addresses are stored lowercased and trimmed, so lookups by email can use the index.
+        static::saving(function (Contact $contact): void {
+            if ($contact->isDirty('email') && is_string($contact->email)) {
+                $contact->email = ContactLookup::normalizeEmail($contact->email);
+            }
+        });
+
         static::creating(function (Contact $contact): void {
             if ($contact->email_status === null) {
                 static::stampEmailStatus($contact);
