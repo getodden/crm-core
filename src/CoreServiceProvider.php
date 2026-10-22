@@ -9,9 +9,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Odden\Core\Actions\SummarizeTimelineAction;
+use Odden\Core\Console\Commands\DemoCommand;
+use Odden\Core\Console\Commands\InstallCommand;
+use Odden\Core\Console\InstallSteps;
 use Odden\Core\Contracts\MailRouteResolver;
 use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
+use Odden\Core\Demo\CoreDemoSeeder;
+use Odden\Core\Demo\DemoRegistry;
 use Odden\Core\Support\Enrichment\EnrichmentManager;
 use Odden\Core\Support\LifecycleStateMachine;
 use Odden\Core\Support\ModelRegistry;
@@ -44,6 +49,13 @@ class CoreServiceProvider extends ServiceProvider
         // Whether a domain accepts mail comes from DNS unless an application rebinds the contract.
         $this->app->bindIf(MailRouteResolver::class, SystemMailRouteResolver::class);
 
+        // Modules add their own checks to `odden:install` here.
+        $this->app->singleton(InstallSteps::class);
+
+        // Each module adds its sample-data seeder to this list; `odden:demo` runs them in order.
+        $this->app->singleton(DemoRegistry::class);
+        $this->callAfterResolving(DemoRegistry::class, fn (DemoRegistry $registry) => $registry->register(CoreDemoSeeder::class));
+
         // Every package registers its models here; resolved lazily so provider order doesn't matter.
         $this->app->singleton(ModelRegistry::class);
         $this->callAfterResolving(ModelRegistry::class, function (ModelRegistry $registry): void {
@@ -69,6 +81,8 @@ class CoreServiceProvider extends ServiceProvider
         RateLimiter::for('odden-api', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.api', 600))->by(self::rateLimitKey($request)));
 
         if ($this->app->runningInConsole()) {
+            $this->commands([InstallCommand::class, DemoCommand::class]);
+
             $this->publishes([
                 __DIR__.'/../config/odden-core.php' => config_path('odden-core.php'),
             ], 'odden-core-config');

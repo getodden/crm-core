@@ -24,6 +24,7 @@ return [
         'lifecycle_stage_transitions' => 'odden_lifecycle_stage_transitions',
         'custom_object_definitions' => 'odden_custom_object_definitions',
         'custom_object_records' => 'odden_custom_object_records',
+        'demo_records' => 'odden_demo_records',
     ],
 
     /*
