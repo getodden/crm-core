@@ -17,6 +17,11 @@ use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Demo\CoreDemoSeeder;
 use Odden\Core\Demo\DemoRegistry;
+use Odden\Core\Registry\ActionExecutor;
+use Odden\Core\Registry\ActionGate;
+use Odden\Core\Registry\ActionRegistry;
+use Odden\Core\Registry\Actions;
+use Odden\Core\Registry\AllowAllActionGate;
 use Odden\Core\Support\Enrichment\EnrichmentManager;
 use Odden\Core\Support\LifecycleStateMachine;
 use Odden\Core\Support\ModelRegistry;
@@ -55,6 +60,19 @@ class CoreServiceProvider extends ServiceProvider
         // Each module adds its sample-data seeder to this list; `odden:demo` runs them in order.
         $this->app->singleton(DemoRegistry::class);
         $this->callAfterResolving(DemoRegistry::class, fn (DemoRegistry $registry) => $registry->register(CoreDemoSeeder::class));
+
+        // Every package registers the actions it offers (people, the assistant and the MCP server all run them) here. A self-hosted
+        // install lets everyone do everything; a host application rebinds the gate to its own permission checks.
+        $this->app->singleton(ActionRegistry::class);
+        $this->callAfterResolving(ActionRegistry::class, fn (ActionRegistry $registry) => $registry->register(
+            Actions\SearchContacts::class,
+            Actions\CreateContact::class,
+            Actions\UpdateContact::class,
+            Actions\AddNote::class,
+            Actions\CreateTask::class,
+        ));
+        $this->app->singletonIf(ActionGate::class, AllowAllActionGate::class);
+        $this->app->singleton(ActionExecutor::class);
 
         // Every package registers its models here; resolved lazily so provider order doesn't matter.
         $this->app->singleton(ModelRegistry::class);

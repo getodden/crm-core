@@ -1,6 +1,10 @@
 <?php
 
 declare(strict_types=1);
+use Odden\Core\Models\ActionLogEntry;
+use Odden\Core\Models\ProposedAction;
+use Odden\Core\Registry\CrmAction;
+use Odden\Core\Support\ModelRegistry;
 
 // Dependency rules scan source text; see sourceFilesMatching() in tests/Pest.php.
 it('core domain remains strictly headless (no Filament or Livewire)', function (): void {
@@ -22,3 +26,13 @@ arch('all core domain actions have an execute method')
 arch('all core enums are string backed for database agnosticism')
     ->expect('Odden\Core\Enums')
     ->toBeStringBackedEnums();
+
+arch('every registry action implements the CrmAction contract')
+    ->expect('Odden\Core\Registry\Actions')
+    ->toImplement(CrmAction::class);
+
+it('registry tables are registered with the model registry', function (): void {
+    $models = app(ModelRegistry::class)->models();
+
+    expect($models)->toContain(ActionLogEntry::class, ProposedAction::class);
+});

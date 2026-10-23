@@ -25,6 +25,8 @@ return [
         'custom_object_definitions' => 'odden_custom_object_definitions',
         'custom_object_records' => 'odden_custom_object_records',
         'demo_records' => 'odden_demo_records',
+        'action_log' => 'odden_action_log',
+        'proposed_actions' => 'odden_proposed_actions',
     ],
 
     /*
