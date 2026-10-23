@@ -37,6 +37,7 @@ use Odden\Core\Traits\QualifiesRelatedColumns;
  * @property EmailStatus|null $email_status
  * @property EmailStatusReason|null $email_status_reason
  * @property CarbonInterface|null $email_checked_at
+ * @property CarbonInterface|null $date_of_birth
  * @property string|null $phone
  * @property string|null $linkedin_url
  * @property string|null $timezone
@@ -105,6 +106,7 @@ class Contact extends Model
         'phone',
         'linkedin_url',
         'timezone',
+        'date_of_birth',
         'lifecycle_stage',
         'became_subscriber_at',
         'became_lead_at',
@@ -134,6 +136,14 @@ class Contact extends Model
     ];
 
     /**
+     * Not shown when a contact is turned into an array or JSON (an API response, a log line): a date of birth is personal data
+     * about a person who may be a child.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['date_of_birth'];
+
+    /**
      * Get the table associated with the model.
      */
     public function getTable(): string
@@ -152,6 +162,7 @@ class Contact extends Model
             'email_status' => EmailStatus::class,
             'email_status_reason' => EmailStatusReason::class,
             'email_checked_at' => 'datetime',
+            'date_of_birth' => 'date',
             'lifecycle_stage' => LifecycleStage::class,
             'became_subscriber_at' => 'datetime',
             'became_lead_at' => 'datetime',
@@ -183,6 +194,22 @@ class Contact extends Model
     public function hasBounced(): bool
     {
         return $this->email_status === EmailStatus::Invalid && $this->email_status_reason === EmailStatusReason::Bounced;
+    }
+
+    /**
+     * The contact's age in whole years on a date (today by default), or null when it is not known: no date of birth, or one in the
+     * future. An unknown age is not an adult age; whoever asks must decide what to do without one.
+     */
+    public function age(?CarbonInterface $on = null): ?int
+    {
+        $born = $this->date_of_birth;
+        $on ??= now();
+
+        if ($born === null || $born->startOfDay()->greaterThan($on)) {
+            return null;
+        }
+
+        return (int) floor($born->startOfDay()->diffInYears($on->copy()->startOfDay()));
     }
 
     /**
