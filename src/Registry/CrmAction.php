@@ -42,7 +42,9 @@ interface CrmAction
 
     /**
      * Whether this actor may run the action with this input. The host's ActionGate has already said yes by now; this is for
-     * checks that depend on the action's own input.
+     * checks that depend on the action's own input. It runs before a request is held for approval, so throw
+     * ActionFailedException with the reason when the request could never work (a contact with no phone number): the person
+     * is told why instead of being asked to approve it.
      *
      * @param  array<string, mixed>  $input
      */

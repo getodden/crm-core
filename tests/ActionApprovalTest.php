@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Odden\Core\Models\ActionLogEntry;
 use Odden\Core\Models\ProposedAction;
 use Odden\Core\Registry\ActionExecutor;
+use Odden\Core\Registry\ActionFailedException;
 use Odden\Core\Registry\ActionRegistry;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actions\BaseAction;
@@ -132,4 +133,47 @@ it('lets only a person decide', function (): void {
     expect(fn () => $executor->approve($proposal, Actor::ai(3)))->toThrow(InvalidArgumentException::class)
         ->and(fn () => $executor->reject($proposal, Actor::system()))->toThrow(InvalidArgumentException::class)
         ->and(FakeSendAction::$sent)->toBe(0);
+});
+
+class FakeRefusingAction extends BaseAction
+{
+    public static function name(): string
+    {
+        return 'test.refuse';
+    }
+
+    public static function description(): string
+    {
+        return 'Always refuses, with a reason.';
+    }
+
+    public static function rules(): array
+    {
+        return ['to' => ['required', 'string']];
+    }
+
+    public function risk(): Risk
+    {
+        return Risk::Outbound;
+    }
+
+    public function authorize(Actor $actor, array $input): bool
+    {
+        throw new ActionFailedException('Ann has not agreed to receive messages.');
+    }
+
+    public function handle(Actor $actor, array $input): ActionResult
+    {
+        return ActionResult::completed();
+    }
+}
+
+it('tells the asker why instead of queueing a request that could never work', function (): void {
+    app(ActionRegistry::class)->register(FakeRefusingAction::class);
+
+    $result = app(ActionExecutor::class)->run('test.refuse', Actor::ai(3), ['to' => 'ann']);
+
+    expect($result->status)->toBe(ActionResult::FAILED)
+        ->and($result->message)->toBe('Ann has not agreed to receive messages.')
+        ->and(ProposedAction::query()->count())->toBe(0);
 });

@@ -59,8 +59,8 @@ final class ActionExecutor
         // Only the keys the rules name reach the action; anything else a caller (or model) sent is dropped.
         $clean = $validator->safe()->only(array_keys($action::rules()));
 
-        if (! $this->gate->allows($actor, $action, $clean) || ! $action->authorize($actor, $clean)) {
-            return $this->finish($action, $actor, $via, $clean, $idempotencyKey, ActionResult::failed('You are not allowed to do that.'));
+        if (($denied = $this->denial($action, $actor, $clean)) !== null) {
+            return $this->finish($action, $actor, $via, $clean, $idempotencyKey, ActionResult::failed($denied));
         }
 
         if ($actor->isAi() && $action->risk()->needsApprovalFromAi()) {
@@ -88,10 +88,10 @@ final class ActionExecutor
         $input = $proposal->input;
 
         // The input was validated when it was proposed, but the world may have moved on, so check the person may still do it.
-        if (! $this->gate->allows($approver, $action, $input) || ! $action->authorize($approver, $input)) {
-            $proposal->update(['status' => ProposedAction::FAILED, 'error' => 'The approver is not allowed to do that.']);
+        if (($denied = $this->denial($action, $approver, $input)) !== null) {
+            $proposal->update(['status' => ProposedAction::FAILED, 'error' => $denied]);
 
-            return $this->finish($action, $approver, 'approval', $input, null, ActionResult::failed('You are not allowed to do that.'), $proposal->getKey());
+            return $this->finish($action, $approver, 'approval', $input, null, ActionResult::failed($denied), $proposal->getKey());
         }
 
         $result = $this->execute($action, $approver, 'approval', $input, $proposal->idempotency_key, $proposal->getKey());
@@ -121,6 +121,22 @@ final class ActionExecutor
             ->where('status', ProposedAction::PENDING)
             ->where('expires_at', '<=', now())
             ->update(['status' => ProposedAction::EXPIRED, 'updated_at' => now()]);
+    }
+
+    /**
+     * Why this actor may not run the action with this input, or null when they may. An action's authorize() can say why by
+     * throwing ActionFailedException ("this contact has not agreed to receive SMS"), so a request that could never work is
+     * refused before a person is asked to approve it.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function denial(CrmAction $action, Actor $actor, array $input): ?string
+    {
+        try {
+            return $this->gate->allows($actor, $action, $input) && $action->authorize($actor, $input) ? null : 'You are not allowed to do that.';
+        } catch (ActionFailedException $e) {
+            return $e->getMessage();
+        }
     }
 
     /**
