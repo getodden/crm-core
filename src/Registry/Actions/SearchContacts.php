@@ -7,6 +7,7 @@ namespace Odden\Core\Registry\Actions;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
+use Odden\Core\Registry\Like;
 use Odden\Core\Registry\Risk;
 
 class SearchContacts extends BaseAction
