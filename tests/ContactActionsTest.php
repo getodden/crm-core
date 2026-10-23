@@ -8,14 +8,17 @@ use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionExecutor;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
+use Odden\Core\Tests\Fixtures\User;
 
 beforeEach(function (): void {
     config(['odden-core.email_validation.check_dns' => false]);
+    // Servers that enforce foreign keys (PostgreSQL, MySQL) need the person an activity is credited to to exist.
+    $this->user = User::factory()->create();
 });
 
 function runAction(string $name, array $input, ?Actor $actor = null): ActionResult
 {
-    return app(ActionExecutor::class)->run($name, $actor ?? Actor::user(1), $input);
+    return app(ActionExecutor::class)->run($name, $actor ?? Actor::user(test()->user->id), $input);
 }
 
 it('creates a contact the same way CreateContactAction does', function (): void {
@@ -44,6 +47,8 @@ it('searches by name, email and phone, treating wildcards as text', function ():
     Contact::factory()->create(['first_name' => 'John', 'last_name' => 'Doe', 'email' => 'john@example.com', 'phone' => null]);
 
     expect(runAction('contacts.search', ['query' => 'conn'])->data['contacts'])->toHaveCount(1)
+        ->and(runAction('contacts.search', ['query' => 'SARAH@EXAMPLE'])->data['contacts'])->toHaveCount(1)
+        ->and(runAction('contacts.search', ['query' => 'a!b'])->data['contacts'])->toBe([])
         ->and(runAction('contacts.search', ['query' => 'john@'])->data['contacts'])->toHaveCount(1)
         ->and(runAction('contacts.search', ['query' => '555-01'])->data['contacts'])->toHaveCount(1)
         ->and(runAction('contacts.search', ['query' => '%%'])->data['contacts'])->toBe([])
@@ -78,13 +83,13 @@ it('fails cleanly for a contact that does not exist', function (): void {
 it('adds a note to the timeline for the person who asked', function (): void {
     $contact = Contact::factory()->create();
 
-    $result = runAction('notes.add', ['contact_id' => $contact->id, 'body' => 'Met at the show.'], Actor::ai(4));
+    $result = runAction('notes.add', ['contact_id' => $contact->id, 'body' => 'Met at the show.'], Actor::ai($this->user->id));
 
     $note = $contact->activities()->sole();
     expect($result->ok())->toBeTrue()
         ->and($note->type)->toBe(ActivityType::Note)
         ->and($note->body)->toBe('Met at the show.')
-        ->and($note->creator_id)->toBe(4)
+        ->and($note->creator_id)->toBe($this->user->id)
         ->and($note->metadata)->toBe(['added_by' => 'assistant']);
 });
 

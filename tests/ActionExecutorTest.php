@@ -9,6 +9,7 @@ use Odden\Core\Registry\ActionGate;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
 use Odden\Core\Registry\CrmAction;
+use Odden\Core\Tests\Fixtures\User;
 
 beforeEach(function (): void {
     config(['odden-core.email_validation.check_dns' => false]);
@@ -87,8 +88,9 @@ it('does not repeat a completed run that has the same idempotency key', function
     $contact = Contact::factory()->create();
     $input = ['contact_id' => $contact->id, 'title' => 'Call back'];
 
-    $first = $executor->run('tasks.create', Actor::user(1), $input, idempotencyKey: 'k1');
-    $second = $executor->run('tasks.create', Actor::user(1), $input, idempotencyKey: 'k1');
+    $user = User::factory()->create();
+    $first = $executor->run('tasks.create', Actor::user($user->id), $input, idempotencyKey: 'k1');
+    $second = $executor->run('tasks.create', Actor::user($user->id), $input, idempotencyKey: 'k1');
 
     expect($first->ok())->toBeTrue()->and($second->ok())->toBeTrue()
         ->and($second->message)->toBe('Already done.')

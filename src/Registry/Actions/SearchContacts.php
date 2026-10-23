@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Odden\Core\Registry\Actions;
 
-use Illuminate\Database\Eloquent\Builder;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
@@ -39,15 +38,7 @@ class SearchContacts extends BaseAction
 
     public function handle(Actor $actor, array $input): ActionResult
     {
-        $term = '%'.addcslashes((string) $input['query'], '%_\\').'%';
-
-        $contacts = Contact::query()
-            ->where(function (Builder $q) use ($term): void {
-                $q->where('first_name', 'like', $term)
-                    ->orWhere('last_name', 'like', $term)
-                    ->orWhere('email', 'like', $term)
-                    ->orWhere('phone', 'like', $term);
-            })
+        $contacts = Like::any(Contact::query(), ['first_name', 'last_name', 'email', 'phone'], (string) $input['query'])
             ->orderBy('id')
             ->limit(min(self::LIMIT, (int) ($input['limit'] ?? self::LIMIT)))
             ->get();
