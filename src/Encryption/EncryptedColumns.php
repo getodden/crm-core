@@ -7,6 +7,7 @@ namespace Odden\Core\Encryption;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\DB;
 use Odden\Core\Encryption\Index\BlindIndexed;
 use Odden\Core\Encryption\Index\SearchIndex;
 
@@ -79,6 +80,25 @@ final class EncryptedColumns
             $done['index:'.(new $model)->getTable()] = app(SearchIndex::class)->rebuild($model, $scope);
         }
 
+        $this->analyze();
+
         return $done;
+    }
+
+    /**
+     * PostgreSQL plans from table statistics, which a bulk conversion has not updated yet (autovacuum comes a minute later): until then a
+     * lookup through the index can pick a plan that reads the whole table. Update them once the rows are in.
+     */
+    private function analyze(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        $tables = [app(SearchIndex::class)->table(), ...array_map(fn (string $model): string => (new $model)->getTable(), $this->indexed)];
+
+        foreach (array_unique($tables) as $table) {
+            DB::statement('ANALYZE '.DB::getQueryGrammar()->wrapTable($table));
+        }
     }
 }
