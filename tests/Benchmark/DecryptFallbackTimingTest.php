@@ -6,9 +6,12 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Odden\Core\Actions\EvaluateActiveListAction;
 use Odden\Core\Encryption\Index\DecryptedFilter;
+use Odden\Core\Encryption\SensitivePropertyConverter;
 use Odden\Core\Enums\ListType;
+use Odden\Core\Enums\PropertyType;
 use Odden\Core\Models\Contact;
 use Odden\Core\Models\CrmList;
+use Odden\Core\Models\PropertyDefinition;
 
 /*
  * Times the decrypt-and-filter fallback (PLAN-encryption-at-rest.md, section 4: "measure before promising"). It does nothing unless
@@ -71,6 +74,49 @@ foreach ($sizes as $size) {
         $report['ORDER BY 500 ids (pickers, small sets)'] = $seconds;
 
         fwrite(STDERR, "\n".DB::getDriverName()." {$size} contacts\n");
+
+        foreach ($report as $what => $took) {
+            fwrite(STDERR, sprintf("  %-48s %7.3f s\n", $what, $took));
+        }
+
+        expect(true)->toBeTrue();
+    });
+}
+
+/*
+ * The same for a sensitive custom property (ODDEN_BENCH_CONTACTS, as above): converting the values, and a list rule on the property, which
+ * is checked in PHP on the records the other rules left.
+ */
+foreach ($sizes as $size) {
+    it("times a rule on an encrypted custom property on {$size} contacts", function () use ($size): void {
+        config(['odden-core.encryption.fallback_limit' => $size + 1]);
+        $now = now()->toDateTimeString();
+
+        foreach (array_chunk(range(1, $size), 1000) as $chunk) {
+            DB::table('odden_contacts')->insert(array_map(fn (int $n): array => [
+                'email' => "p{$n}@x.example", 'first_name' => 'A', 'last_name' => 'B', 'timezone' => 'Europe/Paris', 'lifecycle_stage' => 'lead',
+                'properties' => json_encode(['tax_id' => 'TAX-'.($n % 5000), 'seats' => $n % 200]), 'created_at' => $now, 'updated_at' => $now,
+            ], $chunk));
+        }
+
+        $time = function (callable $work) use (&$seconds): mixed {
+            $start = hrtime(true);
+            $result = $work();
+            $seconds = (hrtime(true) - $start) / 1e9;
+
+            return $result;
+        };
+        $report = [];
+
+        $time(fn () => PropertyDefinition::query()->create(['entity_type' => 'contact', 'name' => 'tax_id', 'label' => 'Tax ID', 'type' => PropertyType::Text, 'is_sensitive' => true]));
+        $time(fn () => app(SensitivePropertyConverter::class)->reconcileAll());
+        $report['convert the property (encrypt every value)'] = $seconds;
+
+        $list = CrmList::create(['name' => 'b', 'entity_type' => 'contact', 'type' => ListType::Active, 'criteria' => [['property' => 'tax_id', 'operator' => 'equals', 'value' => 'TAX-42']]]);
+        $members = $time(fn () => app(EvaluateActiveListAction::class)->execute($list));
+        $report["list rule: tax_id equals ({$members} match)"] = $seconds;
+
+        fwrite(STDERR, "\n".DB::getDriverName()." {$size} contacts, sensitive property\n");
 
         foreach ($report as $what => $took) {
             fwrite(STDERR, sprintf("  %-48s %7.3f s\n", $what, $took));

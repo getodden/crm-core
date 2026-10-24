@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Odden\Core\Areas\ProtectedByArea;
 use Odden\Core\Database\Factories\CompanyFactory;
+use Odden\Core\Encryption\Casts\CustomProperties;
 use Odden\Core\Encryption\Casts\EncryptedString;
 use Odden\Core\Encryption\Index\BlindIndexed;
 use Odden\Core\Encryption\Index\HasBlindIndexes;
@@ -137,7 +138,7 @@ class Company extends Model implements BlindIndexed
             'became_customer_at' => 'datetime',
             'became_evangelist_at' => 'datetime',
             'became_other_at' => 'datetime',
-            'properties' => 'array',
+            'properties' => CustomProperties::class,
             'intent_score' => 'integer',
             'intent_surge' => 'boolean',
             'health_score' => 'integer',

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Odden\Core\Areas\ProtectedByArea;
 use Odden\Core\Database\Factories\ContactFactory;
+use Odden\Core\Encryption\Casts\CustomProperties;
 use Odden\Core\Encryption\Casts\EncryptedDate;
 use Odden\Core\Encryption\Casts\EncryptedString;
 use Odden\Core\Encryption\Index\BlindIndexed;
@@ -197,7 +198,7 @@ class Contact extends Model implements BlindIndexed
             'last_marketing_email_sent_at' => 'datetime',
             'is_unengaged' => 'boolean',
             'unengaged_since' => 'datetime',
-            'properties' => 'array',
+            'properties' => CustomProperties::class,
             'last_contacted_at' => 'datetime',
         ];
     }

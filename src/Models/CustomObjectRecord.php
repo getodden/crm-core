@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Odden\Core\Encryption\Casts\CustomProperties;
 use Odden\Core\Support\UserModel;
 use Odden\Core\Traits\AuditsProperties;
 use Odden\Core\Traits\BelongsToTeam;
@@ -65,7 +66,7 @@ class CustomObjectRecord extends Model
     protected function casts(): array
     {
         return [
-            'properties' => 'array',
+            'properties' => CustomProperties::class,
         ];
     }
 

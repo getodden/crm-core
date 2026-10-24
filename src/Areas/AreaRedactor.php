@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Odden\Core\Areas;
 
+use Odden\Core\Encryption\SensitiveProperties;
+
 /**
  * Takes what a person (or an AI acting for them) may not see out of plain data: an action's result, or text that is about to leave for
  * an AI provider.
@@ -32,6 +34,18 @@ final class AreaRedactor
      */
     public function redact(array $data, array $map, int|string|null $userId, bool $forAi): array
     {
+        // The custom properties the workspace marked sensitive are matched by name too, wherever the name turns up in the data (an
+        // action declares fixed keys; a workspace's property names are its own). A name an action declares keeps the action's area.
+        return $this->walk($data, [...app(SensitiveProperties::class)->namedAreas(), ...$map], $userId, $forAi);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, DataArea>  $map
+     * @return array<string, mixed>
+     */
+    private function walk(array $data, array $map, int|string|null $userId, bool $forAi): array
+    {
         $out = [];
 
         foreach ($data as $key => $value) {
@@ -42,7 +56,7 @@ final class AreaRedactor
             } elseif ($area !== null && ! $this->areas->holds($area, $userId)) {
                 $out[$key] = self::WITHHELD;
             } else {
-                $out[$key] = is_array($value) ? $this->redact($value, $map, $userId, $forAi) : $value;
+                $out[$key] = is_array($value) ? $this->walk($value, $map, $userId, $forAi) : $value;
             }
         }
 

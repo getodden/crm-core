@@ -41,6 +41,11 @@ return [
         // That is refused above this many candidate records, so a very large database never loads everything into memory. A host
         // with a plan limit on contacts rebinds Odden\Core\Encryption\Index\FallbackLimit to its own number.
         'fallback_limit' => (int) env('ODDEN_ENCRYPTION_FALLBACK_LIMIT', 10000),
+
+        // Keep business figures (deal amounts, sales targets) encrypted as well. Off by default: the database then adds, averages and
+        // sorts them. On, every total, average and sort over them is done in PHP on the records of the report, up to the fallback limit
+        // above. After changing it run `php artisan odden:convert-business-data` to convert the figures already stored (either way).
+        'business_data' => (bool) env('ODDEN_ENCRYPT_BUSINESS_DATA', false),
     ],
 
     /*

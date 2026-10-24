@@ -8,8 +8,11 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Areas\DataArea;
 use Odden\Core\Database\Factories\PropertyDefinitionFactory;
+use Odden\Core\Encryption\SensitiveProperties;
 use Odden\Core\Enums\PropertyType;
+use Odden\Core\Exceptions\SensitivePropertyInUse;
 
 /**
  * @property int $id
@@ -22,6 +25,8 @@ use Odden\Core\Enums\PropertyType;
  * @property string|null $description
  * @property bool $is_required
  * @property bool $is_searchable
+ * @property bool $is_sensitive
+ * @property string|null $data_area
  * @property int $sort_order
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
@@ -46,6 +51,8 @@ class PropertyDefinition extends Model
         'description',
         'is_required',
         'is_searchable',
+        'is_sensitive',
+        'data_area',
         'sort_order',
     ];
 
@@ -69,8 +76,17 @@ class PropertyDefinition extends Model
             'options' => 'array',
             'is_required' => 'boolean',
             'is_searchable' => 'boolean',
+            'is_sensitive' => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    /**
+     * The data area this property's values belong to: the area chosen for it, or Sensitive. Meaningful for a sensitive property only.
+     */
+    public function area(): DataArea
+    {
+        return DataArea::tryFrom((string) $this->data_area) ?? DataArea::Sensitive;
     }
 
     /**
@@ -82,6 +98,41 @@ class PropertyDefinition extends Model
     public function scopeForEntity(Builder $query, string $entityType): Builder
     {
         return $query->where('entity_type', $entityType)->orderBy('sort_order');
+    }
+
+    /**
+     * A change to a definition changes what is encrypted and who sees it, so what was read in this request is forgotten.
+     */
+    protected static function booted(): void
+    {
+        $forget = static fn () => app(SensitiveProperties::class)->forget();
+
+        static::saved($forget);
+        static::deleted($forget);
+
+        static::saving(function (self $definition): void {
+            // Values are encrypted under the property's record type and name, so renaming a sensitive property would make them
+            // unreadable. Turn the switch off (the values are converted back), rename, turn it on again.
+            if ($definition->exists && $definition->getOriginal('is_sensitive') && ($definition->isDirty('name') || $definition->isDirty('entity_type'))) {
+                throw new SensitivePropertyInUse('A sensitive property cannot be renamed or moved to another record type. Turn Sensitive off first; its values are converted back.');
+            }
+
+            // The database cannot search encrypted values.
+            if ($definition->is_sensitive) {
+                $definition->is_searchable = false;
+            }
+
+            if ($definition->is_sensitive && DataArea::tryFrom((string) $definition->data_area) === null) {
+                $definition->data_area = DataArea::Sensitive->value;
+            }
+        });
+
+        static::deleting(function (self $definition): void {
+            // Without the definition nothing would say whose eyes its encrypted values are for.
+            if ($definition->is_sensitive) {
+                throw new SensitivePropertyInUse('A sensitive property cannot be deleted. Turn Sensitive off first; its values are converted back.');
+            }
+        });
     }
 
     /**

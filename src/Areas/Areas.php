@@ -6,6 +6,7 @@ namespace Odden\Core\Areas;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Odden\Core\Encryption\SensitiveProperties;
 use Odden\Core\Support\CacheKey;
 
 /**
@@ -64,13 +65,23 @@ final class Areas
     {
         $hidden = [];
 
-        foreach ($this->classification->encryptedAttributesOf($record) as $area) {
+        foreach ([...$this->classification->encryptedAttributesOf($record), ...app(SensitiveProperties::class)->areasOn($record)] as $area) {
             if (! in_array($area, $hidden, true) && ! $this->canSee($area, $record, $userId)) {
                 $hidden[] = $area;
             }
         }
 
         return $hidden;
+    }
+
+    /**
+     * Whether this person may see one custom property of a record: it is not sensitive, or they hold its area (or opened it for this record).
+     */
+    public function canSeeProperty(Model $record, string $property, int|string|null $userId = null): bool
+    {
+        $area = app(SensitiveProperties::class)->areaOf($record, $property);
+
+        return $area === null || $this->canSee($area, $record, $userId);
     }
 
     /**

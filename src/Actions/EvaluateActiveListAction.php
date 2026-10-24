@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Odden\Core\Encryption\Casts\EncryptedCast;
 use Odden\Core\Encryption\Index\BlindIndexed;
 use Odden\Core\Encryption\Index\DecryptedFilter;
+use Odden\Core\Encryption\SensitiveProperties;
 use Odden\Core\Exceptions\InvalidListCriteriaException;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
@@ -224,6 +225,9 @@ class EvaluateActiveListAction
             }
 
             $this->applyRuleToQuery($query, $property, $operator, $value);
+        } elseif (app(SensitiveProperties::class)->isSensitive($query->getModel(), $property)) {
+            // Stored encrypted: the database cannot compare it, so every operator is checked in PHP on the records the other rules left.
+            $this->deferred[] = ['column' => "properties->{$property}", 'operator' => $operator, 'value' => $value];
         } else {
             $this->applyRuleToQuery($query, "properties->{$property}", $operator, $value, jsonPath: explode('->', $property));
         }
@@ -283,7 +287,23 @@ class EvaluateActiveListAction
         $text = fn (mixed $v): string => mb_strtolower(trim((string) $v));
         $actual = $actual === null ? null : $text($actual);
 
+        if (in_array($operator, ['>', '>=', '<', '<='], true)) {
+            // Only a sensitive property reaches here with an order (an encrypted column refuses one): compare numbers as numbers.
+            if ($actual === null || ! is_numeric($actual) || ! is_numeric($expected)) {
+                return false;
+            }
+
+            return match ($operator) {
+                '>' => (float) $actual > (float) $expected,
+                '>=' => (float) $actual >= (float) $expected,
+                '<' => (float) $actual < (float) $expected,
+                default => (float) $actual <= (float) $expected,
+            };
+        }
+
         return match ($operator) {
+            'is_null' => $actual === null || $actual === '',
+            'is_not_null' => $actual !== null && $actual !== '',
             '=' => $actual !== null && $actual === $text($expected),
             '!=' => $actual !== null && $actual !== $text($expected),
             'contains' => $actual !== null && str_contains($actual, $text($expected)),

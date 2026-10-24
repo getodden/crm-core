@@ -10,7 +10,10 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Odden\Core\Encryption\Casts\CustomProperties;
+use Odden\Core\Encryption\SensitiveProperties;
 use Odden\Core\Enums\PropertyType;
+use Odden\Core\Exceptions\SensitivePropertyNotQueryable;
 use Odden\Core\Models\PropertyDefinition;
 
 trait HasCustomProperties
@@ -21,7 +24,7 @@ trait HasCustomProperties
     public function initializeHasCustomProperties(): void
     {
         $this->mergeCasts([
-            'properties' => 'array',
+            'properties' => CustomProperties::class,
         ]);
     }
 
@@ -159,6 +162,11 @@ trait HasCustomProperties
      */
     public function scopeWhereProperty(Builder $query, string $name, mixed $value): Builder
     {
+        // A sensitive value is stored encrypted, so a match in SQL would find nothing and look like "no such records".
+        if (app(SensitiveProperties::class)->isSensitive($this, $name)) {
+            throw new SensitivePropertyNotQueryable($name);
+        }
+
         return $query->where("properties->{$name}", $value);
     }
 }

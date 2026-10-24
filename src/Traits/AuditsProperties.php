@@ -8,6 +8,8 @@ use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Odden\Core\Encryption\Casts\EncryptedAmount;
+use Odden\Core\Encryption\FieldEncrypter;
 use Odden\Core\Models\PropertyHistory;
 use Odden\Core\Support\AuditSource;
 
@@ -51,8 +53,18 @@ trait AuditsProperties
                 ]);
             };
 
-            foreach (array_keys($model->getChanges()) as $key) {
-                if (in_array($key, self::$auditIgnoredAttributes, true)) {
+            // A figure a workspace keeps encrypted lives in two columns (the plain one stays 0.00): its history is the figure itself.
+            $amounts = self::auditAmounts($model);
+            $changes = array_keys($model->getChanges());
+
+            foreach ($amounts as $column => [$before, $after]) {
+                if (abs($before - $after) >= 0.005) {
+                    $record($column, number_format($before, 2, '.', ''), number_format($after, 2, '.', ''));
+                }
+            }
+
+            foreach ($changes as $key) {
+                if (in_array($key, self::$auditIgnoredAttributes, true) || self::isAmountColumn($model, $key)) {
                     continue;
                 }
 
@@ -79,6 +91,59 @@ trait AuditsProperties
                 $record($key, $oldValue, $newValue);
             }
         });
+    }
+
+    /**
+     * The figures with an EncryptedAmount cast that this save changed: column => [before, after]. Both columns of a figure are looked at
+     * together, so keeping it plain, encrypting it or converting it back is not a change; only the figure changing is.
+     *
+     * @return array<string, array{float, float}>
+     */
+    private static function auditAmounts(Model $model): array
+    {
+        $changed = array_keys($model->getChanges());
+        $found = [];
+
+        foreach ($model->getCasts() as $column => $cast) {
+            if (! is_a(explode(':', $cast, 2)[0], EncryptedAmount::class, true)) {
+                continue;
+            }
+
+            $companion = EncryptedAmount::companion($column);
+
+            if (! in_array($column, $changed, true) && ! in_array($companion, $changed, true)) {
+                continue;
+            }
+
+            $field = explode(':', $cast, 2)[1] ?? $model->getTable().'.'.$column;
+            $attributes = $model->getAttributes();
+            $found[$column] = [
+                self::amountOf($model->getRawOriginal($column), $model->getRawOriginal($companion), $field),
+                self::amountOf($attributes[$column] ?? null, $attributes[$companion] ?? null, $field),
+            ];
+        }
+
+        return $found;
+    }
+
+    private static function amountOf(mixed $plain, mixed $stored, string $field): float
+    {
+        $encrypter = app(FieldEncrypter::class);
+
+        return is_string($stored) && $encrypter->isEncrypted($stored)
+            ? (float) $encrypter->decrypt($stored, $field)
+            : (float) $plain;
+    }
+
+    private static function isAmountColumn(Model $model, string $key): bool
+    {
+        foreach ($model->getCasts() as $column => $cast) {
+            if (is_a(explode(':', $cast, 2)[0], EncryptedAmount::class, true) && in_array($key, [$column, EncryptedAmount::companion($column)], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

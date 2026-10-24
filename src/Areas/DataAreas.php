@@ -7,6 +7,7 @@ namespace Odden\Core\Areas;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 use Odden\Core\Encryption\Casts\EncryptedCast;
+use Odden\Core\Encryption\SensitiveProperties;
 
 /**
  * The classification: which area every encrypted field, and every Odden table, belongs to. Each package registers its own when it
@@ -82,7 +83,7 @@ final class DataAreas
         $field = explode(':', $cast, 2)[1];
 
         if (str_starts_with($field, 'property_history.')) {
-            return $this->areaOfProperty((string) $model->getAttribute('property_name'));
+            return $this->areaOfProperty((string) $model->getAttribute('property_name'), (string) $model->getAttribute('auditable_type'));
         }
 
         return $this->knowsField($field) ? $this->areaOfField($field) : null;
@@ -107,11 +108,19 @@ final class DataAreas
     }
 
     /**
-     * The area a built-in property belongs to; anything else (a custom property) is Identity until a workspace marks it otherwise.
+     * The area a property belongs to. A custom property the workspace marked sensitive is in the area it chose (Sensitive when it chose
+     * none); a built-in property is in its own area; any other custom property is Identity.
+     *
+     * @param  string|null  $entity  The record type (`contact`, a model class or a morph name), when known. Without it a property is
+     *                               matched by name on any record type.
      */
-    public function areaOfProperty(string $property): DataArea
+    public function areaOfProperty(string $property, ?string $entity = null): DataArea
     {
-        return match ($property) {
+        $sensitive = app(SensitiveProperties::class);
+
+        $custom = $entity === null || $entity === '' ? $sensitive->areaOfName($property) : $sensitive->areaOf($entity, $property);
+
+        return $custom ?? match ($property) {
             'date_of_birth' => DataArea::Sensitive,
             default => DataArea::Identity,
         };

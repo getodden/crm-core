@@ -15,24 +15,33 @@ use Odden\Core\Areas\AreaAccess;
 use Odden\Core\Areas\Areas;
 use Odden\Core\Areas\DataArea;
 use Odden\Core\Areas\DataAreas;
+use Odden\Core\Console\Commands\ConvertBusinessDataCommand;
+use Odden\Core\Console\Commands\ConvertSensitivePropertiesCommand;
 use Odden\Core\Console\Commands\DemoCommand;
 use Odden\Core\Console\Commands\EncryptExistingCommand;
 use Odden\Core\Console\Commands\EncryptionKeyCommand;
 use Odden\Core\Console\Commands\InstallCommand;
 use Odden\Core\Console\InstallSteps;
+use Odden\Core\Contracts\BusinessData;
 use Odden\Core\Contracts\KeyProvider;
 use Odden\Core\Contracts\MailRouteResolver;
 use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Demo\CoreDemoSeeder;
 use Odden\Core\Demo\DemoRegistry;
+use Odden\Core\Encryption\BusinessDataColumns;
+use Odden\Core\Encryption\BusinessDataConverter;
 use Odden\Core\Encryption\ColumnConverter;
+use Odden\Core\Encryption\ConfigBusinessData;
+use Odden\Core\Encryption\EncryptedAmounts;
 use Odden\Core\Encryption\EncryptedColumns;
 use Odden\Core\Encryption\EnvironmentKeyProvider;
 use Odden\Core\Encryption\FieldEncrypter;
 use Odden\Core\Encryption\Index\DecryptedFilter;
 use Odden\Core\Encryption\Index\FallbackLimit;
 use Odden\Core\Encryption\Index\SearchIndex;
+use Odden\Core\Encryption\SensitiveProperties;
+use Odden\Core\Encryption\SensitivePropertyConverter;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionExecutor;
@@ -74,6 +83,16 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->scoped(ColumnConverter::class);
         $this->app->singleton(EncryptedColumns::class);
         $this->app->scoped(SearchIndex::class);
+        // Which custom properties the workspace marked sensitive: read once per request or job, per tenant.
+        $this->app->scoped(SensitiveProperties::class);
+        $this->app->scoped(SensitivePropertyConverter::class);
+
+        // Business figures (deal amounts, sales targets) are stored plain unless the workspace turns on "Encrypt business data"; a
+        // multi-tenant host rebinds BusinessData to a per-tenant setting.
+        $this->app->singletonIf(BusinessData::class, ConfigBusinessData::class);
+        $this->app->singleton(BusinessDataColumns::class);
+        $this->app->scoped(BusinessDataConverter::class);
+        $this->app->scoped(EncryptedAmounts::class);
         $this->app->bindIf(FallbackLimit::class, FallbackLimit::class);
         $this->app->scoped(DecryptedFilter::class);
 
@@ -164,7 +183,7 @@ class CoreServiceProvider extends ServiceProvider
         $columns->add(fn (): string => config('odden-core.tables.property_history', 'odden_property_history'), 'new_value', 'property_history.new_value');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([InstallCommand::class, DemoCommand::class, EncryptionKeyCommand::class, EncryptExistingCommand::class]);
+            $this->commands([InstallCommand::class, DemoCommand::class, EncryptionKeyCommand::class, EncryptExistingCommand::class, ConvertSensitivePropertiesCommand::class, ConvertBusinessDataCommand::class]);
 
             $this->publishes([
                 __DIR__.'/../config/odden-core.php' => config_path('odden-core.php'),
