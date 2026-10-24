@@ -10,13 +10,17 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Odden\Core\Actions\SummarizeTimelineAction;
 use Odden\Core\Console\Commands\DemoCommand;
+use Odden\Core\Console\Commands\EncryptionKeyCommand;
 use Odden\Core\Console\Commands\InstallCommand;
 use Odden\Core\Console\InstallSteps;
+use Odden\Core\Contracts\KeyProvider;
 use Odden\Core\Contracts\MailRouteResolver;
 use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Demo\CoreDemoSeeder;
 use Odden\Core\Demo\DemoRegistry;
+use Odden\Core\Encryption\EnvironmentKeyProvider;
+use Odden\Core\Encryption\FieldEncrypter;
 use Odden\Core\Registry\ActionExecutor;
 use Odden\Core\Registry\ActionGate;
 use Odden\Core\Registry\ActionRegistry;
@@ -47,6 +51,11 @@ class CoreServiceProvider extends ServiceProvider
 
         // Odden is single-tenant unless a multi-tenant host rebinds the tenant context.
         $this->app->singletonIf(TenantContext::class, NullTenantContext::class);
+
+        // Personal data is encrypted with a key from the environment unless a multi-tenant host rebinds the key provider to one
+        // key per tenant. Scoped, so nothing derived from a key outlives the request or the queued job.
+        $this->app->scopedIf(KeyProvider::class, EnvironmentKeyProvider::class);
+        $this->app->scoped(FieldEncrypter::class);
 
         // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
         $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
@@ -99,7 +108,7 @@ class CoreServiceProvider extends ServiceProvider
         RateLimiter::for('odden-api', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.api', 600))->by(self::rateLimitKey($request)));
 
         if ($this->app->runningInConsole()) {
-            $this->commands([InstallCommand::class, DemoCommand::class]);
+            $this->commands([InstallCommand::class, DemoCommand::class, EncryptionKeyCommand::class]);
 
             $this->publishes([
                 __DIR__.'/../config/odden-core.php' => config_path('odden-core.php'),

@@ -11,6 +11,28 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Encryption of personal data at rest
+    |--------------------------------------------------------------------------
+    |
+    | Fields that hold personal data are stored encrypted (XChaCha20-Poly1305), each tenant with a key of its own. On a
+    | self-hosted install one secret in the environment gives every tenant's key; make one with `php artisan odden:encryption-key`.
+    | Without it the application key is used, which works but ties the data to APP_KEY. A multi-tenant host replaces the key
+    | provider (Odden\Core\Contracts\KeyProvider) with its own.
+    |
+    */
+    'encryption' => [
+        'key' => env('ODDEN_ENCRYPTION_KEY'),
+
+        // Old secrets, so values written with them stay readable after the key above is changed.
+        'previous_keys' => array_filter(explode(',', (string) env('ODDEN_ENCRYPTION_PREVIOUS_KEYS', ''))),
+
+        // Read a value that is not encrypted as it is (written before the column was encrypted). Turn off once every row is
+        // converted, so a plain value where an encrypted one belongs is an error and not silently accepted.
+        'allow_plaintext' => (bool) env('ODDEN_ENCRYPTION_ALLOW_PLAINTEXT', true),
+    ],
+
     'tables' => [
         'contacts' => 'odden_contacts',
         'companies' => 'odden_companies',
