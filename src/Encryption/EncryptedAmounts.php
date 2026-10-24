@@ -225,7 +225,7 @@ final class EncryptedAmounts
         $model = $query->getModel();
         $field = $this->fieldOf($model, $column);
         $companionColumn = EncryptedAmount::companion($column);
-        $limit = $this->limit->records();
+        $limit = $this->limit->amounts();
 
         $candidates = (clone $query)->reorder()->setEagerLoads([]);
 

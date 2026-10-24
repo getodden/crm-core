@@ -14,4 +14,13 @@ class FallbackLimit
     {
         return max(1, (int) config('odden-core.encryption.fallback_limit', 10000));
     }
+
+    /**
+     * The most deals (or other money figures) a total, forecast or sort may decrypt and add up in one go. The same number as
+     * records() unless the host says otherwise: a host whose plan caps contacts but not deals gives it a limit of its own.
+     */
+    public function amounts(): int
+    {
+        return $this->records();
+    }
 }
