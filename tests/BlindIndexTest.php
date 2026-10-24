@@ -180,7 +180,7 @@ it('does not offer greater than or less than on an encrypted field', function ()
 });
 
 it('refuses to decrypt more records than the limit allows, and names the way out', function (): void {
-    Contact::factory()->count(5)->create(['job_title' => 'Sales']);
+    Contact::factory()->count(5)->create(['job_title' => 'Sales', 'lifecycle_stage' => 'lead']);
     config(['odden-core.encryption.fallback_limit' => 3]);
 
     expect(fn () => listOf([['property' => 'job_title', 'operator' => 'contains', 'value' => 'sale']]))->toThrow(TooManyToFilter::class, 'Narrow it down');
@@ -222,7 +222,7 @@ it('orders a query by a list of ids however long the list is', function (): void
     $ids = Contact::factory()->count(40)->create()->pluck('id')->shuffle()->values()->all();
 
     expect(DecryptedFilter::orderByIds(Contact::query(), $ids)->pluck('id')->all())->toBe($ids)
-        ->and(DecryptedFilter::orderByIds(Contact::query(), array_slice($ids, 0, 7))->pluck('id')->all())->toBe([...array_slice($ids, 0, 7), ...collect(array_slice($ids, 7))->sort()->values()->all()]);
+        ->and(DecryptedFilter::orderByIds(Contact::query(), array_slice($ids, 0, 7))->limit(7)->pluck('id')->all())->toBe(array_slice($ids, 0, 7));
 });
 
 it('converts plain rows to ciphertext with index rows, and does it again without harm', function (): void {

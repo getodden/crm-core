@@ -102,6 +102,7 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->singleton(ModelRegistry::class);
         $this->callAfterResolving(ModelRegistry::class, function (ModelRegistry $registry): void {
             $registry->discover(__DIR__.'/Models', 'Odden\\Core\\Models');
+            $registry->registerTable(config('odden-core.tables.search_index', 'odden_search_index'));
         });
     }
 
