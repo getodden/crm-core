@@ -10,8 +10,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Odden\Core\Database\Factories\ActivityFactory;
+use Odden\Core\Encryption\Casts\EncryptedJson;
+use Odden\Core\Encryption\Casts\EncryptedString;
 use Odden\Core\Enums\ActivityStatus;
 use Odden\Core\Enums\ActivityType;
+use Odden\Core\Support\ActivityMarker;
 use Odden\Core\Support\UserModel;
 
 /**
@@ -26,6 +29,7 @@ use Odden\Core\Support\UserModel;
  * @property CarbonInterface|null $completed_at
  * @property int|null $creator_id
  * @property array<string, mixed>|null $metadata
+ * @property string|null $marker A plain tag for finding the activity again (see ActivityMarker); set from the metadata when it is saved.
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
  */
@@ -50,7 +54,17 @@ class Activity extends Model
         'completed_at',
         'creator_id',
         'metadata',
+        'marker',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Activity $activity): void {
+            if ($activity->marker === null && (! $activity->exists || $activity->isDirty('metadata'))) {
+                $activity->marker = ActivityMarker::fromMetadata($activity->metadata);
+            }
+        });
+    }
 
     /**
      * Get the table associated with the model.
@@ -70,7 +84,9 @@ class Activity extends Model
         return [
             'type' => ActivityType::class,
             'status' => ActivityStatus::class,
-            'metadata' => 'array',
+            'title' => EncryptedString::class.':activities.title',
+            'body' => EncryptedString::class.':activities.body',
+            'metadata' => EncryptedJson::class.':activities.metadata',
             'due_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

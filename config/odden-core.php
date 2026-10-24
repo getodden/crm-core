@@ -31,6 +31,10 @@ return [
         // Read a value that is not encrypted as it is (written before the column was encrypted). Turn off once every row is
         // converted, so a plain value where an encrypted one belongs is an error and not silently accepted.
         'allow_plaintext' => (bool) env('ODDEN_ENCRYPTION_ALLOW_PLAINTEXT', true),
+
+        // Encrypt the rows already stored when a migration turns a column over to encryption. Leave on for a self-hosted install. A
+        // multi-tenant host turns it off and runs `php artisan odden:encrypt-existing` inside each tenant, with that tenant's key.
+        'convert_on_migrate' => (bool) env('ODDEN_ENCRYPTION_CONVERT_ON_MIGRATE', true),
     ],
 
     'tables' => [

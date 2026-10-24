@@ -43,7 +43,7 @@ test('merging contacts moves activities to the primary', function () {
 
     mergeContacts($primary, $secondary);
 
-    expect($primary->activities()->where('title', 'Discovery call')->exists())->toBeTrue()
+    expect($primary->activities()->get()->contains('title', 'Discovery call'))->toBeTrue()
         ->and($secondary->activities()->count())->toBe(0);
 });
 
@@ -67,7 +67,7 @@ test('merging contacts moves property history to the primary', function () {
 
     mergeContacts($primary, $secondary);
 
-    $history = PropertyHistory::query()->where('property_name', 'job_title')->where('new_value', 'Director')->sole();
+    $history = PropertyHistory::query()->where('property_name', 'job_title')->get()->where('new_value', 'Director')->sole();
     expect($history->auditable_id)->toBe($primary->id)
         ->and($history->auditable_type)->toBe($primary->getMorphClass());
 });
@@ -152,7 +152,7 @@ test('ContactsMerged listeners can move package data, and a failing listener rol
 
         expect($ticket->fresh()->contact_id)->toBe($secondary->id)
             ->and($secondary->fresh()->trashed())->toBeFalse()
-            ->and($secondary->activities()->where('title', 'Before merge')->exists())->toBeTrue();
+            ->and($secondary->activities()->get()->contains('title', 'Before merge'))->toBeTrue();
     } finally {
         CrossHubRelations::uninstall();
     }
@@ -180,7 +180,7 @@ test('merging companies moves property history to the primary', function () {
 
     mergeCompanies($primary, $secondary);
 
-    expect(PropertyHistory::query()->where('property_name', 'industry')->where('new_value', 'Logistics')->sole()->auditable_id)
+    expect(PropertyHistory::query()->where('property_name', 'industry')->get()->where('new_value', 'Logistics')->sole()->auditable_id)
         ->toBe($primary->id);
 });
 

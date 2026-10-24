@@ -48,8 +48,8 @@ test('finds duplicate contacts by email and merges them preserving activities an
         ->and($secondary->fresh()->trashed())->toBeTrue(); // secondary soft deleted
 
     // Activity moved to primary
-    expect($primary->activities()->where('title', 'Initial Discovery Call with secondary lead')->exists())->toBeTrue()
-        ->and($primary->activities()->where('title', 'Contact Merged')->exists())->toBeTrue();
+    expect($primary->activities()->get()->contains('title', 'Initial Discovery Call with secondary lead'))->toBeTrue()
+        ->and($primary->activities()->get()->contains('title', 'Contact Merged'))->toBeTrue();
 });
 
 test('finds duplicate companies by domain and merges them', function () {

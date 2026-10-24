@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Odden\Core\Database\Factories\ContactFactory;
+use Odden\Core\Encryption\Casts\EncryptedDate;
 use Odden\Core\Enums\EmailStatus;
 use Odden\Core\Enums\EmailStatusReason;
 use Odden\Core\Enums\LeadStatus;
@@ -162,7 +163,7 @@ class Contact extends Model
             'email_status' => EmailStatus::class,
             'email_status_reason' => EmailStatusReason::class,
             'email_checked_at' => 'datetime',
-            'date_of_birth' => 'date',
+            'date_of_birth' => EncryptedDate::class.':contacts.date_of_birth',
             'lifecycle_stage' => LifecycleStage::class,
             'became_subscriber_at' => 'datetime',
             'became_lead_at' => 'datetime',

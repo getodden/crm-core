@@ -6,10 +6,12 @@ namespace Odden\Core;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Odden\Core\Actions\SummarizeTimelineAction;
 use Odden\Core\Console\Commands\DemoCommand;
+use Odden\Core\Console\Commands\EncryptExistingCommand;
 use Odden\Core\Console\Commands\EncryptionKeyCommand;
 use Odden\Core\Console\Commands\InstallCommand;
 use Odden\Core\Console\InstallSteps;
@@ -19,6 +21,8 @@ use Odden\Core\Contracts\SummarizesTimeline;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Demo\CoreDemoSeeder;
 use Odden\Core\Demo\DemoRegistry;
+use Odden\Core\Encryption\ColumnConverter;
+use Odden\Core\Encryption\EncryptedColumns;
 use Odden\Core\Encryption\EnvironmentKeyProvider;
 use Odden\Core\Encryption\FieldEncrypter;
 use Odden\Core\Registry\ActionExecutor;
@@ -56,6 +60,8 @@ class CoreServiceProvider extends ServiceProvider
         // key per tenant. Scoped, so nothing derived from a key outlives the request or the queued job.
         $this->app->scopedIf(KeyProvider::class, EnvironmentKeyProvider::class);
         $this->app->scoped(FieldEncrypter::class);
+        $this->app->scoped(ColumnConverter::class);
+        $this->app->singleton(EncryptedColumns::class);
 
         // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
         $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
@@ -107,8 +113,16 @@ class CoreServiceProvider extends ServiceProvider
         RateLimiter::for('odden-poll', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.poll', 120))->by(self::rateLimitKey($request)));
         RateLimiter::for('odden-api', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.api', 600))->by(self::rateLimitKey($request)));
 
+        $columns = $this->app->make(EncryptedColumns::class);
+        $columns->add(fn (): string => config('odden-core.tables.contacts', 'odden_contacts'), 'date_of_birth', 'contacts.date_of_birth', fn (string $value): string => Date::parse($value)->toDateString());
+        $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'title', 'activities.title');
+        $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'body', 'activities.body');
+        $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'metadata', 'activities.metadata');
+        $columns->add(fn (): string => config('odden-core.tables.property_history', 'odden_property_history'), 'old_value', 'property_history.old_value');
+        $columns->add(fn (): string => config('odden-core.tables.property_history', 'odden_property_history'), 'new_value', 'property_history.new_value');
+
         if ($this->app->runningInConsole()) {
-            $this->commands([InstallCommand::class, DemoCommand::class, EncryptionKeyCommand::class]);
+            $this->commands([InstallCommand::class, DemoCommand::class, EncryptionKeyCommand::class, EncryptExistingCommand::class]);
 
             $this->publishes([
                 __DIR__.'/../config/odden-core.php' => config_path('odden-core.php'),

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Encryption\Casts;
 
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Encryption\DecryptionException;
 use Odden\Core\Encryption\FieldEncrypter;
 
 /**
@@ -36,7 +37,28 @@ abstract class EncryptedCast
 
     protected function write(Model $model, string $key, ?string $plain): ?string
     {
-        return $plain === null ? null : app(FieldEncrypter::class)->encrypt($plain, $this->field($model, $key));
+        if ($plain === null) {
+            return null;
+        }
+
+        $encrypter = app(FieldEncrypter::class);
+        $field = $this->field($model, $key);
+
+        // Each encryption of the same value gives different bytes, so setting a value that has not changed would look like a change
+        // (a save, a history entry). Keep the stored value when it already holds this one.
+        $stored = $model->getRawOriginal($key);
+
+        if (is_string($stored) && $encrypter->isEncrypted($stored)) {
+            try {
+                if (hash_equals($encrypter->decrypt($stored, $field) ?? '', $plain)) {
+                    return $stored;
+                }
+            } catch (DecryptionException) {
+                // Unreadable: replace it.
+            }
+        }
+
+        return $encrypter->encrypt($plain, $field);
     }
 
     private function field(Model $model, string $key): string

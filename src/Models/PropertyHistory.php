@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Odden\Core\Database\Factories\PropertyHistoryFactory;
+use Odden\Core\Encryption\Casts\EncryptedString;
 use Odden\Core\Support\UserModel;
 
 /**
@@ -62,6 +63,8 @@ class PropertyHistory extends Model
     protected function casts(): array
     {
         return [
+            'old_value' => EncryptedString::class.':property_history.old_value',
+            'new_value' => EncryptedString::class.':property_history.new_value',
             'created_at' => 'datetime',
         ];
     }
