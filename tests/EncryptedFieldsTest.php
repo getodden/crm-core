@@ -143,7 +143,7 @@ it('converts only the rows a scope allows', function (): void {
     $other = Contact::factory()->create(['team_id' => 2]);
     DB::table('odden_contacts')->update(['date_of_birth' => '2009-12-31']);
 
-    $done = app(EncryptedColumns::class)->convert(app(ColumnConverter::class), fn ($query) => $query->where('team_id', 1));
+    $done = app(EncryptedColumns::class)->convert(app(ColumnConverter::class), fn ($query, string $table) => $table === 'odden_contacts' ? $query->where('team_id', 1) : $query->whereRaw('1 = 0'));
 
     expect($done['contacts.date_of_birth'])->toBe(1)
         ->and(app(FieldEncrypter::class)->isEncrypted(storedValue('odden_contacts', $kept->id, 'date_of_birth')))->toBeTrue()
