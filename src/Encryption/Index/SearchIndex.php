@@ -19,7 +19,7 @@ use Odden\Core\Encryption\FieldEncrypter;
  * A model keeps its rows up to date through HasBlindIndexes; code that writes the columns without the model (a bulk UPDATE, a raw
  * insert) must call replace() itself or the record cannot be found by those values.
  */
-final class SearchIndex
+class SearchIndex
 {
     private const int INSERT_CHUNK = 500;
 
