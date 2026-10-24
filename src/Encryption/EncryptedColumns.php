@@ -28,6 +28,25 @@ final class EncryptedColumns
         $this->columns[] = compact('table', 'column', 'field', 'normalize');
     }
 
+    /**
+     * The encrypted columns of a table: column => the field name its key context uses. For a host that reads rows without the models
+     * (an export), to decrypt them with FieldEncrypter.
+     *
+     * @return array<string, string>
+     */
+    public function columnsOf(string $table): array
+    {
+        $found = [];
+
+        foreach ($this->columns as $entry) {
+            if (($entry['table'])() === $table) {
+                $found[$entry['column']] = $entry['field'];
+            }
+        }
+
+        return $found;
+    }
+
     /** @var list<class-string<Model&BlindIndexed>> */
     private array $indexed = [];
 
