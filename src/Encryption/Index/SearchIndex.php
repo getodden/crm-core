@@ -68,7 +68,7 @@ final class SearchIndex
                         }
 
                         $hash = $this->hash($field, (string) $kind, $token);
-                        $rows[$field."\0".$hash."\0".$recordId] = ['field' => $field, 'token' => $hash, 'record_id' => $recordId];
+                        $rows[$field."\0".$hash."\0".$recordId] = [...$this->rowDefaults(), 'field' => $field, 'token' => $hash, 'record_id' => $recordId];
                     }
                 }
             }
@@ -83,6 +83,17 @@ final class SearchIndex
                 DB::table($this->table())->insertOrIgnore($chunk);
             }
         });
+    }
+
+    /**
+     * Columns a host has added to the index table, and the value each new row gets (a multi-tenant host puts the workspace here, so its
+     * rows can be found and removed with the workspace's). None by default.
+     *
+     * @return array<string, mixed>
+     */
+    protected function rowDefaults(): array
+    {
+        return [];
     }
 
     /**
