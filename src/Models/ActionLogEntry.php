@@ -6,6 +6,8 @@ namespace Odden\Core\Models;
 
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Encryption\Casts\EncryptedJson;
+use Odden\Core\Encryption\Casts\EncryptedString;
 
 /**
  * One run of a registry action: who ran it, through what (`ui`, `assistant`, `mcp`), and how it ended. Written by the
@@ -41,6 +43,9 @@ class ActionLogEntry extends Model
      */
     protected function casts(): array
     {
-        return ['input' => 'array'];
+        return [
+            'input' => EncryptedJson::class.':action_log.input',
+            'error' => EncryptedString::class.':action_log.error',
+        ];
     }
 }

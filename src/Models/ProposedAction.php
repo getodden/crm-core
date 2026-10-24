@@ -6,9 +6,11 @@ namespace Odden\Core\Models;
 
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Encryption\Casts\EncryptedJson;
+use Odden\Core\Encryption\Casts\EncryptedString;
 
 /**
- * An action an AI asked for that a person has to approve before it runs. The input is stored encrypted.
+ * An action an AI asked for that a person has to approve before it runs. The input and the error text are stored encrypted with the workspace key.
  *
  * @property int $id
  * @property string $action
@@ -50,7 +52,8 @@ class ProposedAction extends Model
     protected function casts(): array
     {
         return [
-            'input' => 'encrypted:array',
+            'input' => EncryptedJson::class.':proposed_actions.input',
+            'error' => EncryptedString::class.':proposed_actions.error',
             'decided_at' => 'datetime',
             'expires_at' => 'datetime',
         ];

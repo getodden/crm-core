@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Odden\Core;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -110,6 +112,10 @@ class CoreServiceProvider extends ServiceProvider
                 'activities.title' => DataArea::Sales, 'activities.body' => DataArea::Sales, 'activities.metadata' => DataArea::Sales,
                 // A change in the history is in the area of the property it records (DataAreas::areaOfProperty); Identity is the floor.
                 'property_history.old_value' => DataArea::Identity, 'property_history.new_value' => DataArea::Identity,
+                'action_log.input' => DataArea::Sales, 'action_log.error' => DataArea::Sales,
+                'proposed_actions.input' => DataArea::Sales, 'proposed_actions.error' => DataArea::Sales,
+                'lists.criteria' => DataArea::Identity,
+                'custom_object_records.name' => DataArea::Identity, 'custom_object_records.properties' => DataArea::Identity,
             ]);
             $areas->tables(self::tableAreas());
         });
@@ -181,6 +187,20 @@ class CoreServiceProvider extends ServiceProvider
         $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'metadata', 'activities.metadata');
         $columns->add(fn (): string => config('odden-core.tables.property_history', 'odden_property_history'), 'old_value', 'property_history.old_value');
         $columns->add(fn (): string => config('odden-core.tables.property_history', 'odden_property_history'), 'new_value', 'property_history.new_value');
+        $columns->add(fn (): string => config('odden-core.tables.action_log', 'odden_action_log'), 'input', 'action_log.input');
+        $columns->add(fn (): string => config('odden-core.tables.action_log', 'odden_action_log'), 'error', 'action_log.error');
+        // A proposal's input was encrypted with the application key by Laravel's own cast: read it with that key, store it with the workspace's.
+        $columns->add(fn (): string => config('odden-core.tables.proposed_actions', 'odden_proposed_actions'), 'input', 'proposed_actions.input', function (string $value): string {
+            try {
+                return Crypt::decryptString($value);
+            } catch (DecryptException) {
+                return $value;
+            }
+        });
+        $columns->add(fn (): string => config('odden-core.tables.proposed_actions', 'odden_proposed_actions'), 'error', 'proposed_actions.error');
+        $columns->add(fn (): string => config('odden-core.tables.lists', 'odden_lists'), 'criteria', 'lists.criteria');
+        $columns->add(fn (): string => config('odden-core.tables.custom_object_records', 'odden_custom_object_records'), 'name', 'custom_object_records.name');
+        $columns->add(fn (): string => config('odden-core.tables.custom_object_records', 'odden_custom_object_records'), 'properties', 'custom_object_records.properties');
 
         if ($this->app->runningInConsole()) {
             $this->commands([InstallCommand::class, DemoCommand::class, EncryptionKeyCommand::class, EncryptExistingCommand::class, ConvertSensitivePropertiesCommand::class, ConvertBusinessDataCommand::class]);

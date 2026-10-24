@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Odden\Core\Actions\EvaluateActiveListAction;
 use Odden\Core\Database\Factories\CrmListFactory;
+use Odden\Core\Encryption\Casts\EncryptedJson;
 use Odden\Core\Enums\ListType;
 use Odden\Core\Support\UserModel;
 
@@ -63,7 +64,7 @@ class CrmList extends Model
     {
         return [
             'type' => ListType::class,
-            'criteria' => 'array',
+            'criteria' => EncryptedJson::class.':lists.criteria',
         ];
     }
 
