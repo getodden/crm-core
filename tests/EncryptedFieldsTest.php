@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Odden\Core\Encryption\ColumnConverter;
+use Odden\Core\Encryption\EncryptedColumns;
 use Odden\Core\Encryption\FieldEncrypter;
 use Odden\Core\Models\Activity;
 use Odden\Core\Models\Contact;
@@ -134,4 +136,16 @@ it('leaves stored rows alone when the host turns conversion on migrate off, and 
 
     expect(app(FieldEncrypter::class)->isEncrypted(storedValue('odden_contacts', $contact->id, 'date_of_birth')))->toBeTrue()
         ->and($contact->fresh()->date_of_birth->toDateString())->toBe('2009-12-31');
+});
+
+it('converts only the rows a scope allows', function (): void {
+    $kept = Contact::factory()->create(['team_id' => 1]);
+    $other = Contact::factory()->create(['team_id' => 2]);
+    DB::table('odden_contacts')->update(['date_of_birth' => '2009-12-31']);
+
+    $done = app(EncryptedColumns::class)->convert(app(ColumnConverter::class), fn ($query) => $query->where('team_id', 1));
+
+    expect($done['contacts.date_of_birth'])->toBe(1)
+        ->and(app(FieldEncrypter::class)->isEncrypted(storedValue('odden_contacts', $kept->id, 'date_of_birth')))->toBeTrue()
+        ->and(storedValue('odden_contacts', $other->id, 'date_of_birth'))->toBe('2009-12-31');
 });

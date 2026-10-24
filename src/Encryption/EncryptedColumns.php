@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Encryption;
 
 use Closure;
+use Illuminate\Database\Query\Builder;
 
 /**
  * Every column that has an encrypted cast, so one command can convert the stored rows of all of them (`odden:encrypt-existing`).
@@ -27,14 +28,15 @@ final class EncryptedColumns
     /**
      * Encrypt the plain values in every registered column, with the active tenant's key.
      *
+     * @param  (Closure(Builder, string): mixed)|null  $scope  See ColumnConverter::encrypt().
      * @return array<string, int> Values encrypted, by field name.
      */
-    public function convert(ColumnConverter $converter): array
+    public function convert(ColumnConverter $converter, ?Closure $scope = null): array
     {
         $done = [];
 
         foreach ($this->columns as $entry) {
-            $done[$entry['field']] = $converter->encrypt(($entry['table'])(), $entry['column'], $entry['field'], $entry['normalize']);
+            $done[$entry['field']] = $converter->encrypt(($entry['table'])(), $entry['column'], $entry['field'], $entry['normalize'], $scope);
         }
 
         return $done;
