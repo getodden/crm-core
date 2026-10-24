@@ -17,8 +17,8 @@ it('loads sample companies and contacts that all sit on the reserved example dom
         ->and(Contact::query()->count())->toBe(8)
         ->and(Activity::query()->count())->toBeGreaterThan(10)
         ->and(CrmList::query()->count())->toBe(2)
-        ->and(Contact::query()->where('email', 'not like', '%.example')->count())->toBe(0)
-        ->and(Company::query()->where('domain', 'not like', '%.example')->count())->toBe(0);
+        ->and(Contact::query()->get()->reject(fn ($contact) => str_ends_with($contact->email, '.example'))->count())->toBe(0)
+        ->and(Company::query()->get()->reject(fn ($company) => str_ends_with($company->domain, '.example'))->count())->toBe(0);
 });
 
 it('marks every sample record, so the list covers what was made', function (): void {

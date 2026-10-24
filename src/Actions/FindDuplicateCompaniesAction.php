@@ -7,13 +7,16 @@ namespace Odden\Core\Actions;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
+use Odden\Core\Encryption\Index\SearchIndex;
 use Odden\Core\Models\Company;
 
 class FindDuplicateCompaniesAction
 {
     /**
-     * Find groups of duplicate companies based on domain or name.
+     * Find groups of duplicate companies based on domain or name (compared without regard to case or surrounding spaces).
+     *
+     * The values are encrypted, so the groups come from the search index (records sharing a keyed hash); nothing is decrypted
+     * to find them.
      *
      * `$visible` limits the search to companies in the given query (for example the companies a panel
      * user may see), so duplicates are never reported across a scope boundary.
@@ -27,56 +30,36 @@ class FindDuplicateCompaniesAction
      */
     public function execute(?Builder $visible = null): array
     {
+        $key = (new Company)->getQualifiedKeyName();
         $scope = static fn (): Builder => $visible === null
             ? Company::query()
-            : Company::query()->whereIn((new Company)->getQualifiedKeyName(), (clone $visible)->select((new Company)->getQualifiedKeyName()));
+            : Company::query()->whereIn($key, (clone $visible)->select($key));
+
+        $index = app(SearchIndex::class);
+        $among = $scope()->select($key)->toBase();
 
         $duplicates = [];
+        $reported = [];
 
-        // 1. Duplicate Domains
-        $duplicateDomains = $scope()
-            ->select('domain', DB::raw('count(*) as count'))
-            ->whereNotNull('domain')
-            ->where('domain', '!=', '')
-            ->groupBy('domain')
-            ->havingRaw('count(*) > ?', [1])
-            ->pluck('domain');
+        foreach (['domain', 'name'] as $field) {
+            foreach ($index->sharedTokens(Company::blindIndexField($field), $among) as $ids) {
+                sort($ids);
+                $signature = implode(',', $ids);
 
-        foreach ($duplicateDomains as $domain) {
-            $companies = $scope()->where('domain', $domain)->orderBy('id')->get();
-            if ($companies->count() > 1) {
-                $duplicates[] = [
-                    'match_field' => 'domain',
-                    'match_value' => (string) $domain,
-                    'companies' => $companies,
-                ];
-            }
-        }
-
-        // 2. Duplicate Names
-        $duplicateNames = $scope()
-            ->select('name', DB::raw('count(*) as count'))
-            ->groupBy('name')
-            ->havingRaw('count(*) > ?', [1])
-            ->pluck('name');
-
-        foreach ($duplicateNames as $name) {
-            $companies = $scope()->where('name', $name)->orderBy('id')->get();
-
-            $ids = $companies->pluck('id')->sort()->values()->all();
-            $alreadyMatched = false;
-            foreach ($duplicates as $existing) {
-                $existingIds = $existing['companies']->pluck('id')->sort()->values()->all();
-                if ($ids === $existingIds) {
-                    $alreadyMatched = true;
-                    break;
+                if (isset($reported[$signature])) {
+                    continue;
                 }
-            }
 
-            if (! $alreadyMatched && $companies->count() > 1) {
+                $reported[$signature] = true;
+                $companies = $scope()->whereIn($key, $ids)->orderBy('id')->get();
+
+                if ($companies->count() < 2) {
+                    continue;
+                }
+
                 $duplicates[] = [
-                    'match_field' => 'name',
-                    'match_value' => (string) $name,
+                    'match_field' => $field,
+                    'match_value' => (string) $companies->first()?->getAttribute($field),
                     'companies' => $companies,
                 ];
             }

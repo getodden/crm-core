@@ -7,6 +7,8 @@ namespace Odden\Core\Actions;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Encryption\Index\IndexText;
+use Odden\Core\Encryption\Index\SearchIndex;
 use Odden\Core\Models\Contact;
 
 class FindDuplicateContactsAction
@@ -18,6 +20,9 @@ class FindDuplicateContactsAction
      * and "555.010.1234" are the same number), and names match on first plus last name,
      * case-insensitively. A group of contacts that was already reported under an earlier field
      * (email, then phone, then name) is not reported again.
+     *
+     * The values are encrypted, so the groups come from the search index (records sharing a keyed hash); nothing is decrypted
+     * to find them.
      *
      * `$visible` limits the search to contacts in the given query (for example the contacts a panel
      * user may see), so duplicates are never reported across a scope boundary.
@@ -35,56 +40,47 @@ class FindDuplicateContactsAction
             ? Contact::query()
             : Contact::query()->whereIn((new Contact)->getQualifiedKeyName(), (clone $visible)->select((new Contact)->getQualifiedKeyName()));
 
-        /** @var array<string, array<string, list<int>>> $buckets */
-        $buckets = ['email' => [], 'phone' => [], 'name' => []];
-
-        $scope()
-            ->select(['id', 'email', 'phone', 'first_name', 'last_name'])
-            ->orderBy('id')
-            ->chunkById(1000, function (Collection $contacts) use (&$buckets): void {
-                foreach ($contacts as $contact) {
-                    $email = mb_strtolower(trim((string) $contact->email));
-                    if ($email !== '') {
-                        $buckets['email'][$email][] = $contact->id;
-                    }
-
-                    $phone = (string) preg_replace('/\D+/', '', (string) $contact->phone);
-                    if ($phone !== '') {
-                        $buckets['phone'][$phone][] = $contact->id;
-                    }
-
-                    $first = mb_strtolower(trim((string) $contact->first_name));
-                    $last = mb_strtolower(trim((string) $contact->last_name));
-                    if ($first !== '' && $last !== '') {
-                        $buckets['name']["{$first} {$last}"][] = $contact->id;
-                    }
-                }
-            });
+        $index = app(SearchIndex::class);
+        $among = $scope()->select((new Contact)->getQualifiedKeyName())->toBase();
 
         $duplicates = [];
         $reported = [];
 
-        foreach ($buckets as $field => $groups) {
-            foreach ($groups as $value => $ids) {
-                if (count($ids) < 2) {
-                    continue;
-                }
-
+        foreach (['email' => 'email', 'phone' => 'phone', 'name' => 'full_name'] as $matchField => $indexed) {
+            foreach ($index->sharedTokens(Contact::blindIndexField($indexed), $among) as $ids) {
                 sort($ids);
                 $signature = implode(',', $ids);
+
                 if (isset($reported[$signature])) {
                     continue;
                 }
+
                 $reported[$signature] = true;
+                $contacts = $scope()->whereIn((new Contact)->getQualifiedKeyName(), $ids)->orderBy('id')->get();
+
+                $first = $contacts->first();
+
+                if ($first === null || $contacts->count() < 2) {
+                    continue;
+                }
 
                 $duplicates[] = [
-                    'match_field' => $field,
-                    'match_value' => (string) $value,
-                    'contacts' => $scope()->whereIn('id', $ids)->orderBy('id')->get(),
+                    'match_field' => $matchField,
+                    'match_value' => $this->matchValue($matchField, $first),
+                    'contacts' => $contacts,
                 ];
             }
         }
 
         return $duplicates;
+    }
+
+    private function matchValue(string $field, Contact $contact): string
+    {
+        return match ($field) {
+            'email' => IndexText::normalize(IndexText::EMAIL, (string) $contact->email),
+            'phone' => IndexText::normalize(IndexText::DIGITS, (string) $contact->phone),
+            default => IndexText::normalize(IndexText::TEXT, (string) $contact->first_name).' '.IndexText::normalize(IndexText::TEXT, (string) $contact->last_name),
+        };
     }
 }

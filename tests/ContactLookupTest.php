@@ -36,8 +36,12 @@ it('normalizes emails saved before contacts were normalized on save', function (
 
     (include dirname(__DIR__).'/database/migrations/2026_01_01_000017_normalize_odden_contact_emails.php')->up();
 
-    expect(DB::table('odden_contacts')->where('id', $id)->value('email'))->toBe('legacy.user@example.com')
-        ->and(ContactLookup::findByEmail('Legacy.User@example.com'))->id->toBe($id);
+    expect(DB::table('odden_contacts')->where('id', $id)->value('email'))->toBe('legacy.user@example.com');
+
+    // A plain row is found once the stored rows have been converted: encrypted, and entered in the search index.
+    $this->artisan('odden:encrypt-existing')->assertSuccessful();
+
+    expect(ContactLookup::findByEmail('Legacy.User@example.com'))->id->toBe($id);
 });
 
 it('uses one indexable exact match, even when nothing matches', function (): void {
@@ -95,7 +99,7 @@ it('looks again after waiting for the lock, so a contact created meanwhile is re
     $found = ContactLookup::findOrCreate('Race@Example.com', ['first_name' => 'Second']);
 
     expect($found->id)->toBe($existing->id)
-        ->and(Contact::query()->where('email', 'race@example.com')->count())->toBe(1);
+        ->and(Contact::query()->whereEmail('race@example.com')->count())->toBe(1);
 });
 
 it('keeps the lock until the surrounding transaction commits, so other connections wait for the new contact', function (): void {
@@ -110,7 +114,7 @@ it('keeps the lock until the surrounding transaction commits, so other connectio
     });
 
     expect(contactEmailLock('pending@example.com')->get())->toBeTrue()
-        ->and(Contact::query()->where('email', 'pending@example.com')->count())->toBe(1);
+        ->and(Contact::query()->whereEmail('pending@example.com')->count())->toBe(1);
 });
 
 it('releases the lock right away outside a transaction', function (): void {
@@ -128,5 +132,5 @@ it('still creates the contact once when the lock is never released', function ()
     $second = ContactLookup::findOrCreate('stuck@example.com');
 
     expect($second->id)->toBe($first->id)
-        ->and(Contact::query()->where('email', 'stuck@example.com')->count())->toBe(1);
+        ->and(Contact::query()->whereEmail('stuck@example.com')->count())->toBe(1);
 });

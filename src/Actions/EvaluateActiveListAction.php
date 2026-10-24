@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Odden\Core\Encryption\Casts\EncryptedCast;
+use Odden\Core\Encryption\Index\BlindIndexed;
+use Odden\Core\Encryption\Index\DecryptedFilter;
 use Odden\Core\Exceptions\InvalidListCriteriaException;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
@@ -50,6 +53,13 @@ class EvaluateActiveListAction
     private const INSERT_CHUNK = 500;
 
     /**
+     * Rules on encrypted columns that the search index cannot answer, collected while the criteria are applied.
+     *
+     * @var list<array{column: string, operator: string, value: mixed}>
+     */
+    private array $deferred = [];
+
+    /**
      * Evaluate filter criteria for an active list and sync its memberships.
      *
      * @throws InvalidListCriteriaException when the entity type, a rule's property, or an operator is not recognised
@@ -62,6 +72,7 @@ class EvaluateActiveListAction
         $tableColumns = Schema::getColumnListing($modelInstance->getTable());
 
         $query = $modelClass::query();
+        $this->deferred = [];
 
         foreach ($list->criteria ?? [] as $rule) {
             $this->applyRule($query, $modelClass, $tableColumns, $rule);
@@ -71,6 +82,24 @@ class EvaluateActiveListAction
         $keyName = $modelInstance->getKeyName();
         $qualifiedKey = $modelInstance->getQualifiedKeyName();
         $membershipsTable = (new ListMembership)->getTable();
+
+        // Rules on encrypted columns that the search index cannot answer are checked in PHP, on the records every other rule left.
+        if ($this->deferred !== []) {
+            $deferred = $this->deferred;
+            $columns = array_values(array_unique(array_column($deferred, 'column')));
+
+            $ids = app(DecryptedFilter::class)->ids($query, $columns, function (array $values) use ($deferred): bool {
+                foreach ($deferred as $rule) {
+                    if (! $this->matches($values[$rule['column']], $rule['operator'], $rule['value'])) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            return $this->syncMembers($list, $memberType, $ids);
+        }
 
         // The difference is worked out in SQL so no list of IDs is ever bound into a query,
         // and inserts ignore rows a concurrent sync already added.
@@ -102,6 +131,37 @@ class EvaluateActiveListAction
                 }, $qualifiedKey, $keyName);
 
             return (clone $query)->count();
+        });
+    }
+
+    /**
+     * Make the list's members of this type exactly these records, when the matching was done in PHP (so no query can name them).
+     *
+     * @param  list<int|string>  $ids
+     */
+    protected function syncMembers(CrmList $list, string $memberType, array $ids): int
+    {
+        return DB::transaction(function () use ($list, $memberType, $ids): int {
+            $wanted = array_flip(array_map('strval', $ids));
+            $existing = ListMembership::query()->where('list_id', $list->id)->where('member_type', $memberType)->pluck('member_id')->map(fn ($id): string => (string) $id)->all();
+
+            foreach (array_chunk(array_values(array_filter($existing, fn (string $id): bool => ! isset($wanted[$id]))), self::INSERT_CHUNK) as $gone) {
+                ListMembership::query()->where('list_id', $list->id)->where('member_type', $memberType)->whereIn('member_id', $gone)->delete();
+            }
+
+            $now = now();
+            $present = array_flip($existing);
+
+            foreach (array_chunk(array_values(array_filter(array_map('strval', $ids), fn (string $id): bool => ! isset($present[$id]))), self::INSERT_CHUNK) as $added) {
+                ListMembership::query()->insertOrIgnore(array_map(fn (string $id): array => [
+                    'list_id' => $list->id,
+                    'member_type' => $memberType,
+                    'member_id' => $id,
+                    'added_at' => $now,
+                ], $added));
+            }
+
+            return count($ids);
         });
     }
 
@@ -157,10 +217,90 @@ class EvaluateActiveListAction
 
         // A real column is matched on the column only; anything else is a custom property.
         if (in_array($property, $tableColumns, true)) {
+            if ($this->isEncrypted($query->getModel(), $property)) {
+                $this->applyEncryptedRule($query, $property, $operator, $value);
+
+                return;
+            }
+
             $this->applyRuleToQuery($query, $property, $operator, $value);
         } else {
             $this->applyRuleToQuery($query, "properties->{$property}", $operator, $value, jsonPath: explode('->', $property));
         }
+    }
+
+    /**
+     * Rules on an encrypted column. Equals, not equals, in and not in use the search index when the column has an exact index;
+     * "is set" and "is not set" ask the database (an empty value is stored as NULL either way); the rest ("contains", and equals
+     * on a column without an exact index) are checked in PHP on the records the other rules left. Greater and less than are not
+     * available: encrypted values have no order the database can use.
+     *
+     * @param  Builder<covariant Model>  $query
+     *
+     * @throws InvalidListCriteriaException
+     */
+    protected function applyEncryptedRule(Builder $query, string $property, string $operator, mixed $value): void
+    {
+        if (in_array($operator, ['>', '>=', '<', '<='], true)) {
+            throw new InvalidListCriteriaException("The rule on [{$property}] cannot use [{$operator}]: the field is encrypted, so it can only be compared for equality, start of a word, or being set.");
+        }
+
+        if ($operator === 'is_null') {
+            $query->whereNull($property);
+
+            return;
+        }
+
+        if ($operator === 'is_not_null') {
+            $query->whereNotNull($property);
+
+            return;
+        }
+
+        $model = $query->getModel();
+        $indexed = $model instanceof BlindIndexed && $model->hasExactBlindIndex($property);
+
+        if ($indexed) {
+            match ($operator) {
+                '=' => $query->whereBlindExactIn($property, [(string) $value]),
+                '!=' => $query->whereBlindExactNotIn($property, [(string) $value]),
+                'in' => $query->whereBlindExactIn($property, array_map('strval', (array) $value)),
+                'not_in' => $query->whereBlindExactNotIn($property, array_map('strval', (array) $value)),
+                default => $this->deferred[] = ['column' => $property, 'operator' => $operator, 'value' => $value],
+            };
+
+            return;
+        }
+
+        $this->deferred[] = ['column' => $property, 'operator' => $operator, 'value' => $value];
+    }
+
+    /**
+     * Whether a decrypted value passes a rule, compared without regard to case.
+     */
+    protected function matches(mixed $actual, string $operator, mixed $expected): bool
+    {
+        $text = fn (mixed $v): string => mb_strtolower(trim((string) $v));
+        $actual = $actual === null ? null : $text($actual);
+
+        return match ($operator) {
+            '=' => $actual !== null && $actual === $text($expected),
+            '!=' => $actual !== null && $actual !== $text($expected),
+            'contains' => $actual !== null && str_contains($actual, $text($expected)),
+            'in' => $actual !== null && in_array($actual, array_map($text, (array) $expected), true),
+            'not_in' => $actual !== null && ! in_array($actual, array_map($text, (array) $expected), true),
+            default => false,
+        };
+    }
+
+    /**
+     * Whether the model stores this column encrypted.
+     */
+    protected function isEncrypted(Model $model, string $column): bool
+    {
+        $cast = $model->getCasts()[$column] ?? null;
+
+        return is_string($cast) && is_subclass_of(explode(':', $cast, 2)[0], EncryptedCast::class);
     }
 
     /**

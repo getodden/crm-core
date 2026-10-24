@@ -42,14 +42,16 @@ it('refuses a lifecycle stage that does not exist', function (): void {
     expect(runAction('contacts.create', ['email' => 'a@example.com', 'lifecycle_stage' => 'emperor'])->errors)->toHaveKey('lifecycle_stage');
 });
 
-it('searches by name, email and phone, ignoring case', function (): void {
+it('searches by the start of a name and by a whole email address or phone number, ignoring case', function (): void {
     Contact::factory()->create(['first_name' => 'Sarah', 'last_name' => 'Connor', 'email' => 'sarah@example.com', 'phone' => '555-0100']);
     Contact::factory()->create(['first_name' => 'John', 'last_name' => 'Doe', 'email' => 'john@example.com', 'phone' => null]);
 
     expect(runAction('contacts.search', ['query' => 'conn'])->data['contacts'])->toHaveCount(1)
-        ->and(runAction('contacts.search', ['query' => 'SARAH@EXAMPLE'])->data['contacts'])->toHaveCount(1)
-        ->and(runAction('contacts.search', ['query' => 'john@'])->data['contacts'])->toHaveCount(1)
-        ->and(runAction('contacts.search', ['query' => '555-01'])->data['contacts'])->toHaveCount(1)
+        ->and(runAction('contacts.search', ['query' => 'sar con'])->data['contacts'])->toHaveCount(1)
+        ->and(runAction('contacts.search', ['query' => 'SARAH@EXAMPLE.COM'])->data['contacts'])->toHaveCount(1)
+        ->and(runAction('contacts.search', ['query' => '555 0100'])->data['contacts'])->toHaveCount(1)
+        ->and(runAction('contacts.search', ['query' => 'onnor'])->data['contacts'])->toHaveCount(0)
+        ->and(runAction('contacts.search', ['query' => 'ohn@example.com'])->data['contacts'])->toHaveCount(0)
         ->and(runAction('contacts.search', ['query' => 'x'])->status)->toBe(ActionResult::FAILED);
 });
 

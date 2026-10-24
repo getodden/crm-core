@@ -35,6 +35,12 @@ return [
         // Encrypt the rows already stored when a migration turns a column over to encryption. Leave on for a self-hosted install. A
         // multi-tenant host turns it off and runs `php artisan odden:encrypt-existing` inside each tenant, with that tenant's key.
         'convert_on_migrate' => (bool) env('ODDEN_ENCRYPTION_CONVERT_ON_MIGRATE', true),
+
+        // Encrypted columns cannot be searched or sorted by the database. What the search index cannot answer (a rule such as "job
+        // title contains", sorting by name) is done by reading the candidate records, decrypting them in PHP and filtering there.
+        // That is refused above this many candidate records, so a very large database never loads everything into memory. A host
+        // with a plan limit on contacts rebinds Odden\Core\Encryption\Index\FallbackLimit to its own number.
+        'fallback_limit' => (int) env('ODDEN_ENCRYPTION_FALLBACK_LIMIT', 10000),
     ],
 
     'tables' => [
@@ -51,6 +57,7 @@ return [
         'custom_object_definitions' => 'odden_custom_object_definitions',
         'custom_object_records' => 'odden_custom_object_records',
         'demo_records' => 'odden_demo_records',
+        'search_index' => 'odden_search_index',
         'action_log' => 'odden_action_log',
         'proposed_actions' => 'odden_proposed_actions',
     ],

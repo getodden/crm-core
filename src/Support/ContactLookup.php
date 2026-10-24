@@ -44,7 +44,7 @@ class ContactLookup
 
         /** @var Contact|null $contact */
         $contact = Contact::query()
-            ->where('email', $normalized)
+            ->whereEmail($normalized)
             ->orderBy($key)
             ->first();
 

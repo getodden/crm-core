@@ -14,6 +14,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Odden\Core\Database\Factories\ContactFactory;
 use Odden\Core\Encryption\Casts\EncryptedDate;
+use Odden\Core\Encryption\Casts\EncryptedString;
+use Odden\Core\Encryption\Index\BlindIndexed;
+use Odden\Core\Encryption\Index\HasBlindIndexes;
+use Odden\Core\Encryption\Index\IndexText;
 use Odden\Core\Enums\EmailStatus;
 use Odden\Core\Enums\EmailStatusReason;
 use Odden\Core\Enums\LeadStatus;
@@ -75,12 +79,13 @@ use Odden\Core\Traits\QualifiesRelatedColumns;
  * @property-read CarbonInterface|null $became_sql_at
  * @property-read string $full_name
  */
-class Contact extends Model
+class Contact extends Model implements BlindIndexed
 {
     use AuditsProperties;
     use BelongsToTeam;
     use HasActivities;
     use HasAssociations;
+    use HasBlindIndexes;
     use HasCustomProperties;
 
     /** @use HasFactory<ContactFactory> */
@@ -160,6 +165,13 @@ class Contact extends Model
     protected function casts(): array
     {
         return [
+            'first_name' => EncryptedString::class.':contacts.first_name',
+            'last_name' => EncryptedString::class.':contacts.last_name',
+            'job_title' => EncryptedString::class.':contacts.job_title',
+            'email' => EncryptedString::class.':contacts.email',
+            'phone' => EncryptedString::class.':contacts.phone',
+            'linkedin_url' => EncryptedString::class.':contacts.linkedin_url',
+            'timezone' => EncryptedString::class.':contacts.timezone',
             'email_status' => EmailStatus::class,
             'email_status_reason' => EmailStatusReason::class,
             'email_checked_at' => 'datetime',
@@ -283,6 +295,44 @@ class Contact extends Model
     }
 
     /**
+     * The columns found again through the search index, and how: the address and the phone number as a whole, the names and the
+     * job title by word, the names also by the start of a word.
+     *
+     * @return array<string, array<string, string|true>>
+     */
+    public static function blindIndexedColumns(): array
+    {
+        return [
+            'email' => ['exact' => IndexText::EMAIL],
+            'phone' => ['exact' => IndexText::DIGITS],
+            'first_name' => ['exact' => IndexText::TEXT, 'word' => true, 'prefix' => true],
+            'last_name' => ['exact' => IndexText::TEXT, 'word' => true, 'prefix' => true],
+            'job_title' => ['exact' => IndexText::TEXT, 'word' => true],
+        ];
+    }
+
+    public static function blindIndexPrefix(): string
+    {
+        return 'contacts';
+    }
+
+    /**
+     * Adds the full name (first and last together), so duplicates are found by name without decrypting.
+     *
+     * @return array<string, array<string, list<string>>>
+     */
+    public function blindIndexEntries(): array
+    {
+        $entries = $this->blindIndexEntriesFromColumns();
+        $first = IndexText::normalize(IndexText::TEXT, (string) $this->first_name);
+        $last = IndexText::normalize(IndexText::TEXT, (string) $this->last_name);
+
+        $entries[static::blindIndexField('full_name')] = ['exact' => $first !== '' && $last !== '' ? [$first.' '.$last] : []];
+
+        return $entries;
+    }
+
+    /**
      * Scope query to find contact by email.
      *
      * @param  Builder<$this>  $query
@@ -290,7 +340,42 @@ class Contact extends Model
      */
     public function scopeWhereEmail(Builder $query, string $email): Builder
     {
-        return $query->where('email', ContactLookup::normalizeEmail($email));
+        return $this->scopeWhereBlindExact($query, 'email', ContactLookup::normalizeEmail($email));
+    }
+
+    /**
+     * Contacts where a word of the first or last name starts with each word typed ("ann le" finds Annie Lee).
+     *
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeWhereNameStartsWith(Builder $query, string $text): Builder
+    {
+        return $this->scopeWhereBlindWords($query, ['first_name', 'last_name'], $text);
+    }
+
+    /**
+     * A search box: matches the typed words against the start of the names, and an address or a phone number typed in full.
+     * Anywhere-inside matching is not available on encrypted columns.
+     *
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeSearchIdentity(Builder $query, string $term): Builder
+    {
+        $term = trim($term);
+
+        return $query->where(function (Builder $q) use ($term): void {
+            $q->where(fn (Builder $names) => $this->scopeWhereNameStartsWith($names, $term));
+
+            if (str_contains($term, '@')) {
+                $q->orWhere(fn (Builder $email) => $this->scopeWhereEmail($email, $term));
+            }
+
+            if (strlen(IndexText::normalize(IndexText::DIGITS, $term)) >= 5) {
+                $q->orWhere(fn (Builder $phone) => $this->scopeWhereBlindExact($phone, 'phone', $term));
+            }
+        });
     }
 
     /**

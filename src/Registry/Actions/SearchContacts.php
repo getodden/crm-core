@@ -7,7 +7,6 @@ namespace Odden\Core\Registry\Actions;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
-use Odden\Core\Registry\Like;
 use Odden\Core\Registry\Risk;
 
 class SearchContacts extends BaseAction
@@ -21,7 +20,7 @@ class SearchContacts extends BaseAction
 
     public static function description(): string
     {
-        return 'Find contacts by name, email address or phone number. Use it before creating or changing a contact, to get its id. Returns at most '.self::LIMIT.' matches.';
+        return 'Find contacts by the start of a first or last name ("ann le" finds Annie Lee), or by a complete email address or phone number. A part from the middle of a name or address does not match. Use it before creating or changing a contact, to get its id. Returns at most '.self::LIMIT.' matches.';
     }
 
     public static function rules(): array
@@ -39,7 +38,7 @@ class SearchContacts extends BaseAction
 
     public function handle(Actor $actor, array $input): ActionResult
     {
-        $contacts = Like::any(Contact::query(), ['first_name', 'last_name', 'email', 'phone'], (string) $input['query'])
+        $contacts = Contact::query()->searchIdentity((string) $input['query'])
             ->orderBy('id')
             ->limit(min(self::LIMIT, (int) ($input['limit'] ?? self::LIMIT)))
             ->get();

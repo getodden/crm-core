@@ -19,7 +19,7 @@ it('runs a valid action and logs it', function (): void {
     $result = app(ActionExecutor::class)->run('contacts.create', Actor::user(7), ['email' => 'Ann@Example.com', 'first_name' => 'Ann'], via: 'ui');
 
     expect($result->ok())->toBeTrue()
-        ->and(Contact::query()->where('email', 'ann@example.com')->exists())->toBeTrue();
+        ->and(Contact::query()->whereEmail('ann@example.com')->exists())->toBeTrue();
 
     $log = ActionLogEntry::query()->sole();
     expect($log->action)->toBe('contacts.create')

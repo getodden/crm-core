@@ -25,11 +25,17 @@ use Odden\Core\Encryption\ColumnConverter;
 use Odden\Core\Encryption\EncryptedColumns;
 use Odden\Core\Encryption\EnvironmentKeyProvider;
 use Odden\Core\Encryption\FieldEncrypter;
+use Odden\Core\Encryption\Index\DecryptedFilter;
+use Odden\Core\Encryption\Index\FallbackLimit;
+use Odden\Core\Encryption\Index\SearchIndex;
+use Odden\Core\Models\Company;
+use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionExecutor;
 use Odden\Core\Registry\ActionGate;
 use Odden\Core\Registry\ActionRegistry;
 use Odden\Core\Registry\Actions;
 use Odden\Core\Registry\AllowAllActionGate;
+use Odden\Core\Support\ContactLookup;
 use Odden\Core\Support\Enrichment\EnrichmentManager;
 use Odden\Core\Support\LifecycleStateMachine;
 use Odden\Core\Support\ModelRegistry;
@@ -62,6 +68,9 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->scoped(FieldEncrypter::class);
         $this->app->scoped(ColumnConverter::class);
         $this->app->singleton(EncryptedColumns::class);
+        $this->app->scoped(SearchIndex::class);
+        $this->app->bindIf(FallbackLimit::class, FallbackLimit::class);
+        $this->app->scoped(DecryptedFilter::class);
 
         // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
         $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
@@ -115,6 +124,15 @@ class CoreServiceProvider extends ServiceProvider
 
         $columns = $this->app->make(EncryptedColumns::class);
         $columns->add(fn (): string => config('odden-core.tables.contacts', 'odden_contacts'), 'date_of_birth', 'contacts.date_of_birth', fn (string $value): string => Date::parse($value)->toDateString());
+        foreach (['first_name', 'last_name', 'job_title', 'phone', 'linkedin_url', 'timezone'] as $column) {
+            $columns->add(fn (): string => config('odden-core.tables.contacts', 'odden_contacts'), $column, 'contacts.'.$column);
+        }
+        $columns->add(fn (): string => config('odden-core.tables.contacts', 'odden_contacts'), 'email', 'contacts.email', fn (string $value): string => ContactLookup::normalizeEmail($value));
+        foreach (['name', 'domain', 'phone'] as $column) {
+            $columns->add(fn (): string => config('odden-core.tables.companies', 'odden_companies'), $column, 'companies.'.$column);
+        }
+        $columns->addIndexed(Contact::class);
+        $columns->addIndexed(Company::class);
         $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'title', 'activities.title');
         $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'body', 'activities.body');
         $columns->add(fn (): string => config('odden-core.tables.activities', 'odden_activities'), 'metadata', 'activities.metadata');

@@ -27,7 +27,6 @@ class ContactTest extends TestCase
 
         $this->assertDatabaseHas('odden_contacts', [
             'id' => $contact->id,
-            'email' => 'sarah@example.com',
             'lifecycle_stage' => LifecycleStage::Lead->value,
         ]);
 

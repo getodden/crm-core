@@ -36,7 +36,7 @@ class AutoAssociateContactCompanyAction
         // Check if contact is already associated with a company with this domain
         /** @var Company|null $existingAssociation */
         $existingAssociation = $contact->companies()
-            ->where('domain', $domain)
+            ->whereDomain($domain)
             ->first();
 
         if ($existingAssociation !== null) {
@@ -44,7 +44,7 @@ class AutoAssociateContactCompanyAction
         }
 
         // Query for an existing company with this domain
-        $query = Company::query()->where('domain', $domain);
+        $query = Company::query()->whereDomain($domain);
 
         if ($contact->team_id !== null) {
             $query->where(function ($q) use ($contact): void {

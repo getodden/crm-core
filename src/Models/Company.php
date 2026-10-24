@@ -12,6 +12,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Odden\Core\Database\Factories\CompanyFactory;
+use Odden\Core\Encryption\Casts\EncryptedString;
+use Odden\Core\Encryption\Index\BlindIndexed;
+use Odden\Core\Encryption\Index\HasBlindIndexes;
+use Odden\Core\Encryption\Index\IndexText;
 use Odden\Core\Enums\CustomerHealthStatus;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Support\UserModel;
@@ -55,12 +59,13 @@ use Odden\Core\Traits\QualifiesRelatedColumns;
  * @property CarbonInterface|null $updated_at
  * @property CarbonInterface|null $deleted_at
  */
-class Company extends Model
+class Company extends Model implements BlindIndexed
 {
     use AuditsProperties;
     use BelongsToTeam;
     use HasActivities;
     use HasAssociations;
+    use HasBlindIndexes;
     use HasCustomProperties;
 
     /** @use HasFactory<CompanyFactory> */
@@ -118,6 +123,9 @@ class Company extends Model
     protected function casts(): array
     {
         return [
+            'name' => EncryptedString::class.':companies.name',
+            'domain' => EncryptedString::class.':companies.domain',
+            'phone' => EncryptedString::class.':companies.phone',
             'lifecycle_stage' => LifecycleStage::class,
             'became_subscriber_at' => 'datetime',
             'became_lead_at' => 'datetime',
@@ -218,6 +226,25 @@ class Company extends Model
     }
 
     /**
+     * The columns found again through the search index: the domain and the name as a whole, the name also by word and by the
+     * start of a word.
+     *
+     * @return array<string, array<string, string|true>>
+     */
+    public static function blindIndexedColumns(): array
+    {
+        return [
+            'domain' => ['exact' => IndexText::TEXT],
+            'name' => ['exact' => IndexText::TEXT, 'word' => true, 'prefix' => true],
+        ];
+    }
+
+    public static function blindIndexPrefix(): string
+    {
+        return 'companies';
+    }
+
+    /**
      * Scope query to find company by domain.
      *
      * @param  Builder<$this>  $query
@@ -225,7 +252,29 @@ class Company extends Model
      */
     public function scopeWhereDomain(Builder $query, string $domain): Builder
     {
-        return $query->where('domain', static::normalizeDomain($domain));
+        return $this->scopeWhereBlindExact($query, 'domain', static::normalizeDomain($domain));
+    }
+
+    /**
+     * Companies where a word of the name starts with each word typed.
+     *
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeWhereNameStartsWith(Builder $query, string $text): Builder
+    {
+        return $this->scopeWhereBlindWords($query, ['name'], $text);
+    }
+
+    /**
+     * Companies with exactly this name (any case).
+     *
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeWhereNameIs(Builder $query, string $name): Builder
+    {
+        return $this->scopeWhereBlindExact($query, 'name', $name);
     }
 
     /**
