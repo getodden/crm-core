@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Odden\Core\Registry\Actions;
 
+use Odden\Core\Areas\Areas;
+use Odden\Core\Areas\DataArea;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
@@ -36,6 +38,16 @@ class SearchContacts extends BaseAction
         return Risk::Read;
     }
 
+    public function areas(): array
+    {
+        return [
+            'name' => DataArea::Identity,
+            'email' => DataArea::Identity,
+            'phone' => DataArea::Identity,
+            'job_title' => DataArea::Identity,
+        ];
+    }
+
     public function handle(Actor $actor, array $input): ActionResult
     {
         $contacts = Contact::query()->searchIdentity((string) $input['query'])
@@ -51,6 +63,8 @@ class SearchContacts extends BaseAction
                 'phone' => $c->phone,
                 'job_title' => $c->job_title,
                 'lifecycle_stage' => $c->lifecycle_stage->value,
+                // The age, never the date of birth, and only for someone who holds the Sensitive area.
+                'age' => app(Areas::class)->holds(DataArea::Sensitive, $actor->userId) ? $c->age() : null,
             ])->all(),
         ], $contacts->isEmpty() ? 'No contacts matched.' : null);
     }

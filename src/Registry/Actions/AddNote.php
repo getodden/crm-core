@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Registry\Actions;
 
 use Odden\Core\Actions\LogActivityAction;
+use Odden\Core\Areas\DataArea;
 use Odden\Core\Enums\ActivityType;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionFailedException;
@@ -35,6 +36,14 @@ class AddNote extends BaseAction
     public function sensitive(): array
     {
         return ['body', 'title'];
+    }
+
+    public function areas(): array
+    {
+        return [
+            'body' => DataArea::Sales,
+            'title' => DataArea::Sales,
+        ];
     }
 
     public function handle(Actor $actor, array $input): ActionResult

@@ -23,6 +23,11 @@ abstract class BaseAction implements CrmAction
         return [];
     }
 
+    public function areas(): array
+    {
+        return [];
+    }
+
     public function authorize(Actor $actor, array $input): bool
     {
         return true;

@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Odden\Core\Actions\SummarizeTimelineAction;
+use Odden\Core\Areas\AllowAllAreaAccess;
+use Odden\Core\Areas\AreaAccess;
+use Odden\Core\Areas\Areas;
+use Odden\Core\Areas\DataArea;
+use Odden\Core\Areas\DataAreas;
 use Odden\Core\Console\Commands\DemoCommand;
 use Odden\Core\Console\Commands\EncryptExistingCommand;
 use Odden\Core\Console\Commands\EncryptionKeyCommand;
@@ -71,6 +76,24 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->scoped(SearchIndex::class);
         $this->app->bindIf(FallbackLimit::class, FallbackLimit::class);
         $this->app->scoped(DecryptedFilter::class);
+
+        // Every encrypted field and every table belongs to one data area. Everyone holds every area unless a host that has roles
+        // rebinds AreaAccess (PLAN-encryption-at-rest.md, section 5).
+        $this->app->singleton(DataAreas::class);
+        $this->app->singletonIf(AreaAccess::class, AllowAllAreaAccess::class);
+        $this->app->scoped(Areas::class);
+        $this->callAfterResolving(DataAreas::class, function (DataAreas $areas): void {
+            $areas->fields([
+                'contacts.first_name' => DataArea::Identity, 'contacts.last_name' => DataArea::Identity, 'contacts.email' => DataArea::Identity,
+                'contacts.phone' => DataArea::Identity, 'contacts.job_title' => DataArea::Identity, 'contacts.linkedin_url' => DataArea::Identity,
+                'contacts.timezone' => DataArea::Identity, 'contacts.date_of_birth' => DataArea::Sensitive,
+                'companies.name' => DataArea::Identity, 'companies.domain' => DataArea::Identity, 'companies.phone' => DataArea::Identity,
+                'activities.title' => DataArea::Sales, 'activities.body' => DataArea::Sales, 'activities.metadata' => DataArea::Sales,
+                // A change in the history is in the area of the property it records (DataAreas::areaOfProperty); Identity is the floor.
+                'property_history.old_value' => DataArea::Identity, 'property_history.new_value' => DataArea::Identity,
+            ]);
+            $areas->tables(self::tableAreas());
+        });
 
         // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
         $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
@@ -151,6 +174,23 @@ class CoreServiceProvider extends ServiceProvider
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'odden-core-migrations');
         }
+    }
+
+    /**
+     * The area of each core table.
+     *
+     * @return array<string, DataArea>
+     */
+    private static function tableAreas(): array
+    {
+        $identity = ['contacts', 'companies', 'search_index', 'associations', 'association_types', 'lists', 'list_memberships', 'properties', 'property_history',
+            'custom_object_definitions', 'custom_object_records', 'lifecycle_stage_transitions', 'demo_records'];
+        $sales = ['activities', 'action_log', 'proposed_actions'];
+
+        return [
+            ...array_combine(array_map(fn (string $t): string => 'odden_'.$t, $identity), array_fill(0, count($identity), DataArea::Identity)),
+            ...array_combine(array_map(fn (string $t): string => 'odden_'.$t, $sales), array_fill(0, count($sales), DataArea::Sales)),
+        ];
     }
 
     /**

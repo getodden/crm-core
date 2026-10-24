@@ -48,6 +48,16 @@ final class EncryptedColumns
         return $found;
     }
 
+    /**
+     * The field name of every registered column ("contacts.email"), for the check that each belongs to a data area.
+     *
+     * @return list<string>
+     */
+    public function fieldNames(): array
+    {
+        return array_values(array_unique(array_column($this->columns, 'field')));
+    }
+
     /** @var list<class-string<Model&BlindIndexed>> */
     private array $indexed = [];
 

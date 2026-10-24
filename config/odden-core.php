@@ -43,6 +43,20 @@ return [
         'fallback_limit' => (int) env('ODDEN_ENCRYPTION_FALLBACK_LIMIT', 10000),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Data areas
+    |--------------------------------------------------------------------------
+    |
+    | Every encrypted field belongs to one of five areas (Identity, Marketing, Service, Sales, Sensitive). A host that has roles decides
+    | who holds which (Odden\Core\Areas\AreaAccess); a self-hosted install lets everyone see everything. A person who may open an
+    | area they do not hold, with a reason, keeps it open for that one record this many minutes.
+    |
+    */
+    'areas' => [
+        'reveal_minutes' => (int) env('ODDEN_AREA_REVEAL_MINUTES', 15),
+    ],
+
     'tables' => [
         'contacts' => 'odden_contacts',
         'companies' => 'odden_companies',

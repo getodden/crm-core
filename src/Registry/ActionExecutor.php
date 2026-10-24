@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Odden\Core\Areas\AreaRedactor;
+use Odden\Core\Areas\Areas;
 use Odden\Core\Models\ActionLogEntry;
 use Odden\Core\Models\ProposedAction;
 use Throwable;
@@ -25,6 +27,8 @@ final class ActionExecutor
     public function __construct(
         private readonly ActionRegistry $registry,
         private readonly ActionGate $gate,
+        private readonly Areas $areas,
+        private readonly AreaRedactor $redactor,
     ) {}
 
     /**
@@ -133,10 +137,54 @@ final class ActionExecutor
     private function denial(CrmAction $action, Actor $actor, array $input): ?string
     {
         try {
-            return $this->gate->allows($actor, $action, $input) && $action->authorize($actor, $input) ? null : 'You are not allowed to do that.';
+            if (! $this->gate->allows($actor, $action, $input) || ! $action->authorize($actor, $input)) {
+                return 'You are not allowed to do that.';
+            }
+
+            return $this->areaDenial($action, $actor, $input);
         } catch (ActionFailedException $e) {
             return $e->getMessage();
         }
+    }
+
+    /**
+     * Why the input names a field in a data area the actor does not hold, or null. The system holds every area.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function areaDenial(CrmAction $action, Actor $actor, array $input): ?string
+    {
+        if ($actor->userId === null) {
+            return null;
+        }
+
+        foreach ($action->areas() as $key => $area) {
+            if (array_key_exists($key, $input) && ! $this->areas->holds($area, $actor->userId)) {
+                return "You do not have access to the {$area->label()} area, so {$key} cannot be used.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * What the actor gets back leaves out the areas they do not hold, and for an AI the Sensitive area as well.
+     */
+    private function withheld(CrmAction $action, Actor $actor, ActionResult $result): ActionResult
+    {
+        if ($result->data === [] || $actor->kind === Actor::SYSTEM) {
+            return $result;
+        }
+
+        return new ActionResult(
+            $result->status,
+            $this->redactor->redact($result->data, $action->areas(), $actor->userId, $actor->isAi()),
+            $result->message,
+            $result->errors,
+            $result->proposalId,
+            $result->subjectType,
+            $result->subjectId,
+        );
     }
 
     /**
@@ -155,7 +203,7 @@ final class ActionExecutor
             $result = ActionResult::failed('Something went wrong, and nothing was changed.');
         }
 
-        return $this->finish($action, $actor, $via, $input, $idempotencyKey, $result, $proposalId);
+        return $this->finish($action, $actor, $via, $input, $idempotencyKey, $this->withheld($action, $actor, $result), $proposalId);
     }
 
     /**

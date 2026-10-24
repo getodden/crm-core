@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
+use Odden\Core\Areas\ProtectedByArea;
 use Odden\Core\Database\Factories\ContactFactory;
 use Odden\Core\Encryption\Casts\EncryptedDate;
 use Odden\Core\Encryption\Casts\EncryptedString;
@@ -93,6 +94,7 @@ class Contact extends Model implements BlindIndexed
 
     use HasLifecycleStageTransitions;
     use Notifiable;
+    use ProtectedByArea;
     use QualifiesRelatedColumns;
     use SoftDeletes;
 

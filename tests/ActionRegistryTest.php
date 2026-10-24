@@ -44,6 +44,11 @@ it('refuses a class that is not an action and a name taken by another class', fu
             return Risk::Read;
         }
 
+        public function areas(): array
+        {
+            return [];
+        }
+
         public function sensitive(): array
         {
             return [];

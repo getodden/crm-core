@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Odden\Core\Registry\Actions;
 
+use Odden\Core\Areas\DataArea;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionFailedException;
 use Odden\Core\Registry\ActionResult;
@@ -32,6 +33,17 @@ class UpdateContact extends BaseAction
             'job_title' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'timezone' => ['nullable', 'string', 'max:64'],
+        ];
+    }
+
+    public function areas(): array
+    {
+        return [
+            'first_name' => DataArea::Identity,
+            'last_name' => DataArea::Identity,
+            'job_title' => DataArea::Identity,
+            'phone' => DataArea::Identity,
+            'timezone' => DataArea::Identity,
         ];
     }
 

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Odden\Core\Areas\ProtectedByArea;
 use Odden\Core\Database\Factories\ActivityFactory;
 use Odden\Core\Encryption\Casts\EncryptedJson;
 use Odden\Core\Encryption\Casts\EncryptedString;
@@ -37,6 +38,8 @@ class Activity extends Model
 {
     /** @use HasFactory<ActivityFactory> */
     use HasFactory;
+
+    use ProtectedByArea;
 
     /**
      * The attributes that are mass assignable.

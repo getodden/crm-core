@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Odden\Core\Areas\ProtectedByArea;
 use Odden\Core\Database\Factories\CompanyFactory;
 use Odden\Core\Encryption\Casts\EncryptedString;
 use Odden\Core\Encryption\Index\BlindIndexed;
@@ -72,6 +73,7 @@ class Company extends Model implements BlindIndexed
     use HasFactory;
 
     use HasLifecycleStageTransitions;
+    use ProtectedByArea;
     use QualifiesRelatedColumns;
     use SoftDeletes;
 

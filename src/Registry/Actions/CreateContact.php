@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Registry\Actions;
 
 use Odden\Core\Actions\CreateContactAction;
+use Odden\Core\Areas\DataArea;
 use Odden\Core\Enums\LifecycleStage;
 use Odden\Core\Registry\ActionResult;
 use Odden\Core\Registry\Actor;
@@ -31,6 +32,17 @@ class CreateContact extends BaseAction
             'job_title' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'lifecycle_stage' => ['nullable', 'string', 'in:'.implode(',', array_column(LifecycleStage::cases(), 'value'))],
+        ];
+    }
+
+    public function areas(): array
+    {
+        return [
+            'email' => DataArea::Identity,
+            'first_name' => DataArea::Identity,
+            'last_name' => DataArea::Identity,
+            'job_title' => DataArea::Identity,
+            'phone' => DataArea::Identity,
         ];
     }
 

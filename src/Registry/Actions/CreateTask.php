@@ -6,6 +6,7 @@ namespace Odden\Core\Registry\Actions;
 
 use Carbon\CarbonImmutable;
 use Odden\Core\Actions\LogActivityAction;
+use Odden\Core\Areas\DataArea;
 use Odden\Core\Enums\ActivityStatus;
 use Odden\Core\Enums\ActivityType;
 use Odden\Core\Models\Contact;
@@ -38,6 +39,14 @@ class CreateTask extends BaseAction
     public function sensitive(): array
     {
         return ['title', 'details'];
+    }
+
+    public function areas(): array
+    {
+        return [
+            'title' => DataArea::Sales,
+            'details' => DataArea::Sales,
+        ];
     }
 
     public function handle(Actor $actor, array $input): ActionResult
