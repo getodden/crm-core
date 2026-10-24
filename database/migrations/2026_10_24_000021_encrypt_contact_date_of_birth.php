@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Odden\Core\Encryption\ColumnConverter;
 
@@ -45,6 +46,13 @@ return new class extends Migration
         }
 
         app(ColumnConverter::class)->decrypt($table, 'date_of_birth', 'contacts.date_of_birth');
+
+        // PostgreSQL does not turn text into a date by itself.
+        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE "'.$table.'" ALTER COLUMN "date_of_birth" TYPE date USING "date_of_birth"::date');
+
+            return;
+        }
 
         Schema::table($table, function (Blueprint $table): void {
             $table->date('date_of_birth')->nullable()->change();

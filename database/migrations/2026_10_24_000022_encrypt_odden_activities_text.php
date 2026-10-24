@@ -77,6 +77,16 @@ return new class extends Migration
 
         Schema::table($name, function (Blueprint $table): void {
             $table->string('title')->nullable()->change();
+        });
+
+        // PostgreSQL does not turn text into json by itself.
+        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE "'.$name.'" ALTER COLUMN "metadata" TYPE json USING "metadata"::json');
+
+            return;
+        }
+
+        Schema::table($name, function (Blueprint $table): void {
             $table->json('metadata')->nullable()->change();
         });
     }
