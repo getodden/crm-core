@@ -47,6 +47,28 @@ final class DecryptedFilter
     }
 
     /**
+     * How many candidates have each decrypted value of a column (null counts under the empty string), most frequent first.
+     *
+     * @param  Builder<covariant Model>  $candidates
+     * @return array<string, int>
+     *
+     * @throws TooManyToFilter
+     */
+    public function tally(Builder $candidates, string $column): array
+    {
+        $counts = [];
+
+        $this->each($candidates, [$column], function (int|string $id, array $values) use ($column, &$counts): void {
+            $value = (string) $values[$column];
+            $counts[$value] = ($counts[$value] ?? 0) + 1;
+        });
+
+        uksort($counts, fn (string $a, string $b): int => [$counts[$b], $a] <=> [$counts[$a], $b]);
+
+        return $counts;
+    }
+
+    /**
      * The candidates' ids ordered by decrypted columns (case-insensitive, nulls last), for ordering a query with orderByIds().
      *
      * @param  Builder<covariant Model>  $candidates

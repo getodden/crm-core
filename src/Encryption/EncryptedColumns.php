@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Odden\Core\Encryption\Index\BlindIndexed;
+use Odden\Core\Encryption\Index\IndexText;
 use Odden\Core\Encryption\Index\SearchIndex;
 
 /**
@@ -27,6 +28,21 @@ final class EncryptedColumns
     public function add(Closure $table, string $column, string $field, ?Closure $normalize = null): void
     {
         $this->columns[] = compact('table', 'column', 'field', 'normalize');
+    }
+
+    /** @var list<array{table: Closure(): string, column: string, hash: string, field: string, normalizer: string}> */
+    private array $hashes = [];
+
+    /**
+     * Register a hash column that belongs to an encrypted column (a keyed hash of the normalized value, for finding a row by value and
+     * for a unique index), so the same command fills it for the rows stored before it existed.
+     *
+     * @param  Closure(): string  $table
+     * @param  string  $normalizer  An IndexText kind (EMAIL, DIGITS, TEXT).
+     */
+    public function addHash(Closure $table, string $column, string $hashColumn, string $field, string $normalizer = IndexText::EMAIL): void
+    {
+        $this->hashes[] = ['table' => $table, 'column' => $column, 'hash' => $hashColumn, 'field' => $field, 'normalizer' => $normalizer];
     }
 
     /**
@@ -80,6 +96,10 @@ final class EncryptedColumns
     public function convert(ColumnConverter $converter, ?Closure $scope = null): array
     {
         $done = [];
+
+        foreach ($this->hashes as $entry) {
+            $done['hash:'.$entry['field']] = $converter->hash(($entry['table'])(), $entry['column'], $entry['hash'], $entry['field'], $entry['normalizer'], $scope);
+        }
 
         foreach ($this->columns as $entry) {
             $done[$entry['field']] = $converter->encrypt(($entry['table'])(), $entry['column'], $entry['field'], $entry['normalize'], $scope);

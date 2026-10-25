@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Odden\Core\Encryption\ColumnConverter;
 use Odden\Core\Encryption\EncryptedColumns;
 use Odden\Core\Encryption\FieldEncrypter;
+use Odden\Core\Encryption\Index\IndexText;
 use Odden\Core\Models\Activity;
 use Odden\Core\Models\Contact;
 use Odden\Core\Models\PropertyHistory;
@@ -148,4 +151,30 @@ it('converts only the rows a scope allows', function (): void {
     expect($done['contacts.date_of_birth'])->toBe(1)
         ->and(app(FieldEncrypter::class)->isEncrypted(storedValue('odden_contacts', $kept->id, 'date_of_birth')))->toBeTrue()
         ->and(storedValue('odden_contacts', $other->id, 'date_of_birth'))->toBe('2009-12-31');
+});
+
+it('fills the hash column of an encrypted column from plain and from encrypted values, and a second run changes nothing', function (): void {
+    Schema::create('odden_hash_probe', function (Blueprint $table): void {
+        $table->id();
+        $table->text('email')->nullable();
+        $table->string('email_hash', 64)->nullable()->unique();
+    });
+
+    $encrypter = app(FieldEncrypter::class);
+    DB::table('odden_hash_probe')->insert([
+        ['email' => 'Ada@Example.com'],
+        ['email' => $encrypter->encrypt('grace@example.com', 'probe.email')],
+        ['email' => null],
+    ]);
+
+    $converter = app(ColumnConverter::class);
+
+    expect($converter->hash('odden_hash_probe', 'email', 'email_hash', 'probe.email', IndexText::EMAIL))->toBe(2)
+        ->and($converter->hash('odden_hash_probe', 'email', 'email_hash', 'probe.email', IndexText::EMAIL))->toBe(0)
+        ->and(DB::table('odden_hash_probe')->where('email_hash', $encrypter->blindIndex('ada@example.com', 'probe.email'))->count())->toBe(1)
+        ->and(DB::table('odden_hash_probe')->where('email_hash', $encrypter->blindIndex('grace@example.com', 'probe.email'))->count())->toBe(1)
+        // The hash is keyed by the field: the same address in another field gives another hash.
+        ->and($encrypter->blindIndex('ada@example.com', 'probe.email'))->not->toBe($encrypter->blindIndex('ada@example.com', 'other.email'));
+
+    Schema::drop('odden_hash_probe');
 });

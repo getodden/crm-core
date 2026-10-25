@@ -6,7 +6,10 @@ namespace Odden\Core;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\RateLimiter;
@@ -44,6 +47,8 @@ use Odden\Core\Encryption\Index\FallbackLimit;
 use Odden\Core\Encryption\Index\SearchIndex;
 use Odden\Core\Encryption\SensitiveProperties;
 use Odden\Core\Encryption\SensitivePropertyConverter;
+use Odden\Core\Logging\LogScrubber;
+use Odden\Core\Logging\ScrubLogs;
 use Odden\Core\Models\Company;
 use Odden\Core\Models\Contact;
 use Odden\Core\Registry\ActionExecutor;
@@ -155,11 +160,37 @@ class CoreServiceProvider extends ServiceProvider
     }
 
     /**
+     * Decrypted values are kept out of the logs: every log channel gets the scrubber, and what the process remembers of decrypted
+     * values is dropped when a request or a job ends.
+     */
+    private function scrubLogs(): void
+    {
+        if (! config('odden-core.logging.scrub', true)) {
+            return;
+        }
+
+        foreach (array_keys((array) config('logging.channels', [])) as $channel) {
+            $taps = (array) config("logging.channels.{$channel}.tap", []);
+
+            if (! in_array(ScrubLogs::class, $taps, true)) {
+                config(["logging.channels.{$channel}.tap" => [...$taps, ScrubLogs::class]]);
+            }
+        }
+
+        // After the exception of the request or job was reported (a job's is reported after JobFailed, so that event does not clear).
+        $events = $this->app->make('events');
+        $events->listen(RequestHandled::class, LogScrubber::flush(...));
+        $events->listen(JobProcessing::class, LogScrubber::flush(...));
+        $events->listen(JobProcessed::class, LogScrubber::flush(...));
+    }
+
+    /**
      * Bootstrap any application services.
      */
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->scrubLogs();
 
         // Limiters for Odden's public routes: "odden-public" for browser-facing submissions
         // (forms, chat, portal replies), "odden-poll" for read endpoints that clients call

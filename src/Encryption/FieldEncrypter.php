@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Encryption;
 
 use Odden\Core\Contracts\KeyProvider;
+use Odden\Core\Logging\LogScrubber;
 
 /**
  * Encrypts and decrypts single values with the active tenant's key, and builds the keyed hashes ("blind indexes") that let an
@@ -64,6 +65,9 @@ final class FieldEncrypter
         if ($plain === false) {
             throw new DecryptionException('The value cannot be read: it was changed or belongs to another field or tenant.');
         }
+
+        // Remembered so the logs can be kept free of it (see LogScrubber).
+        LogScrubber::remember($plain);
 
         return $plain;
     }

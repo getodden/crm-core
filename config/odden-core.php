@@ -50,6 +50,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Logs
+    |--------------------------------------------------------------------------
+    |
+    | Run every configured log channel through Odden\Core\Logging\LogScrubber, which blanks the values the application has decrypted,
+    | the bindings of database errors and the values databases print in constraint errors. Turn off only to debug.
+    |
+    */
+    'logging' => [
+        'scrub' => (bool) env('ODDEN_LOG_SCRUB', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Data areas
     |--------------------------------------------------------------------------
     |

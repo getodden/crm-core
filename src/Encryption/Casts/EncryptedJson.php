@@ -6,6 +6,7 @@ namespace Odden\Core\Encryption\Casts;
 
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
+use Odden\Core\Logging\LogScrubber;
 
 /**
  * An array stored encrypted as JSON.
@@ -23,6 +24,7 @@ class EncryptedJson extends EncryptedCast implements CastsAttributes
         }
 
         $decoded = json_decode($plain, true);
+        LogScrubber::rememberLeaves($decoded);
 
         return is_array($decoded) ? $decoded : null;
     }

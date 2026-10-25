@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Odden\Core\Encryption\Index\IndexText;
 
 /**
  * Converts the stored values of a column between plain and encrypted, for a column that has just been given an encrypted cast.
@@ -58,6 +59,43 @@ final class ColumnConverter
         });
 
         return $converted;
+    }
+
+    /**
+     * Fill a hash column (a keyed hash of the normalized value, see FieldEncrypter::blindIndex) for the rows that have none, from the
+     * column as stored (plain or encrypted). A host looks a record up by this hash when the value itself is encrypted.
+     *
+     * @param  string  $field  The name the value's cast uses; it also keys the hash.
+     * @param  string  $normalizer  An IndexText kind (EMAIL, DIGITS, TEXT).
+     * @param  (Closure(Builder, string): mixed)|null  $scope  See encrypt().
+     * @return int How many hashes were written.
+     */
+    public function hash(string $table, string $column, string $hashColumn, string $field, string $normalizer, ?Closure $scope = null): int
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasColumn($table, $hashColumn)) {
+            return 0;
+        }
+
+        $done = 0;
+        $query = DB::table($table)->whereNotNull($column)->whereNull($hashColumn);
+
+        if ($scope !== null) {
+            $scope($query, $table);
+        }
+
+        $query->chunkById(500, function ($rows) use ($table, $column, $hashColumn, $field, $normalizer, &$done): void {
+            foreach ($rows as $row) {
+                $stored = (string) $row->{$column};
+                $plain = $this->encrypter->isEncrypted($stored) ? (string) $this->encrypter->decrypt($stored, $field) : $stored;
+
+                DB::table($table)->where('id', $row->id)->update([
+                    $hashColumn => $this->encrypter->blindIndex(IndexText::normalize($normalizer, $plain), $field),
+                ]);
+                $done++;
+            }
+        });
+
+        return $done;
     }
 
     /**
