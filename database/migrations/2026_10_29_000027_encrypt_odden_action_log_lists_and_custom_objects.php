@@ -21,6 +21,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // A record's name was indexed as a string; the encrypted form is text, which MySQL cannot index without a length (error 1170),
+        // and a ciphertext is no use to an index anyway.
+        $objects = config('odden-core.tables.custom_object_records', 'odden_custom_object_records');
+
+        if (Schema::hasIndex($objects, ['name'])) {
+            Schema::table($objects, fn (Blueprint $blueprint) => $blueprint->dropIndex(['name']));
+        }
+
         foreach ($this->columns() as [$table, $column, $field]) {
             Schema::table($table, function (Blueprint $blueprint) use ($column): void {
                 $blueprint->text($column)->nullable()->change();

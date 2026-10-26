@@ -88,8 +88,10 @@ it('stores a sensitive property encrypted inside the JSON, leaves the others rea
 
     $fresh = $contact->fresh();
 
-    expect($fresh->properties)->toBe(['tax_id' => '123-45-6789', 'seats' => 12, 'flags' => ['a' => 1, 'b' => [2, 3]], 'vip' => true, 'nickname' => 'Zed'])
-        ->and($fresh->getProperty('tax_id'))->toBe('123-45-6789');
+    // toEqual: MySQL's JSON type does not keep the order of an object's keys.
+    expect($fresh->properties)->toEqual(['tax_id' => '123-45-6789', 'seats' => 12, 'flags' => ['a' => 1, 'b' => [2, 3]], 'vip' => true, 'nickname' => 'Zed'])
+        ->and($fresh->getProperty('tax_id'))->toBe('123-45-6789')
+        ->and($fresh->getProperty('seats'))->toBe(12);
 });
 
 it('keeps the stored bytes of a sensitive value that did not change, and writes no history for it', function (): void {
@@ -331,16 +333,16 @@ it('masks a sensitive property from a person who does not hold its area, and lea
     actingAsUser(2);
 
     heldOnly([2 => [DataArea::Identity, DataArea::Sales]]);
-    expect($contact->fresh()->toArray()['properties'])->toBe(['tax_id' => null, 'region' => 'north', 'nickname' => 'Zed'])
+    expect($contact->fresh()->toArray()['properties'])->toEqual(['tax_id' => null, 'region' => 'north', 'nickname' => 'Zed'])
         ->and($contact->fresh()->toJson())->not->toContain('123')
         // Code that works on the record still reads it.
         ->and($contact->fresh()->getProperty('tax_id'))->toBe('123');
 
     heldOnly([2 => [DataArea::Identity]]);
-    expect($contact->fresh()->toArray()['properties'])->toBe(['tax_id' => null, 'region' => null, 'nickname' => 'Zed']);
+    expect($contact->fresh()->toArray()['properties'])->toEqual(['tax_id' => null, 'region' => null, 'nickname' => 'Zed']);
 
     heldOnly([2 => [DataArea::Sensitive]]);
-    expect($contact->fresh()->toArray()['properties'])->toBe(['tax_id' => '123', 'region' => null, 'nickname' => 'Zed']);
+    expect($contact->fresh()->toArray()['properties'])->toEqual(['tax_id' => '123', 'region' => null, 'nickname' => 'Zed']);
 });
 
 it('does not let someone change a sensitive property they cannot see', function (): void {

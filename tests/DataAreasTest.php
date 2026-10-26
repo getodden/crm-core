@@ -66,7 +66,14 @@ it('puts every encrypted field in an area, and every Odden table', function (): 
 
     expect(array_diff(array_keys($areas->allFields()), app(EncryptedColumns::class)->fieldNames()))->toBe([], 'areas for fields that are not encrypted');
 
+    // MySQL lists the tables of every database on the server, so keep to this connection's own.
+    $database = in_array(DB::getDriverName(), ['mysql', 'mariadb'], true) ? DB::getDatabaseName() : null;
+
     foreach (Schema::getTables() as $table) {
+        if ($database !== null && $table['schema'] !== $database) {
+            continue;
+        }
+
         if (str_starts_with($table['name'], 'odden_')) {
             expect(array_key_exists($table['name'], $areas->allTables()))->toBeTrue("the table [{$table['name']}] has no data area");
         }
