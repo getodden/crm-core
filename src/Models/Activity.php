@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Odden\Core\Models;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,6 +18,7 @@ use Odden\Core\Enums\ActivityStatus;
 use Odden\Core\Enums\ActivityType;
 use Odden\Core\Support\ActivityMarker;
 use Odden\Core\Support\UserModel;
+use Odden\Core\Traits\HasMentions;
 
 /**
  * @property int $id
@@ -33,12 +35,14 @@ use Odden\Core\Support\UserModel;
  * @property string|null $marker A plain tag for finding the activity again (see ActivityMarker); set from the metadata when it is saved.
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
+ * @property-read Collection<int, Mention> $mentions
  */
 class Activity extends Model
 {
     /** @use HasFactory<ActivityFactory> */
     use HasFactory;
 
+    use HasMentions;
     use ProtectedByArea;
 
     /**

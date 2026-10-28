@@ -92,6 +92,7 @@ return [
         'search_index' => 'odden_search_index',
         'action_log' => 'odden_action_log',
         'proposed_actions' => 'odden_proposed_actions',
+        'mentions' => 'odden_mentions',
     ],
 
     /*

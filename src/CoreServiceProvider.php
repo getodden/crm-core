@@ -255,7 +255,7 @@ class CoreServiceProvider extends ServiceProvider
     {
         $identity = ['contacts', 'companies', 'search_index', 'associations', 'association_types', 'lists', 'list_memberships', 'properties', 'property_history',
             'custom_object_definitions', 'custom_object_records', 'lifecycle_stage_transitions', 'demo_records'];
-        $sales = ['activities', 'action_log', 'proposed_actions'];
+        $sales = ['activities', 'mentions', 'action_log', 'proposed_actions'];
 
         return [
             ...array_combine(array_map(fn (string $t): string => 'odden_'.$t, $identity), array_fill(0, count($identity), DataArea::Identity)),
