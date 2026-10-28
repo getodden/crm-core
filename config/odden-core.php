@@ -109,6 +109,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Disabled Users
+    |--------------------------------------------------------------------------
+    |
+    | The nullable timestamp or flag column on the user model that marks an
+    | account as disabled (set means disabled). Pickers of owners and assignees
+    | stop offering disabled accounts; lookups, routing and existing records are
+    | unaffected. When null, no account is ever treated as disabled.
+    |
+    */
+    'users' => [
+        'disabled_column' => env('ODDEN_USERS_DISABLED_COLUMN'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Domain Auto-Association
     |--------------------------------------------------------------------------
     |

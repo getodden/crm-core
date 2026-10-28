@@ -44,6 +44,36 @@ final class UserModel
         return app(TenantContext::class)->scopeUsers(self::className()::query());
     }
 
+    /**
+     * The users a picker may offer: query() without disabled accounts, when "odden-core.users.disabled_column" is set.
+     *
+     * Use it for lists a person chooses from (owner, assignee, @mention candidates). Use query() for everything else: looking a
+     * user up, routing, reports, and resolving a value already stored on a record.
+     *
+     * @param  int|string|array<array-key, int|string>|null  $keep  The key (or keys) of the user(s) a record being edited already has; offered even when disabled, so
+     *                                                              the form still shows and accepts its current value.
+     * @return Builder<Model>
+     */
+    public static function pickable(int|string|array|null $keep = null): Builder
+    {
+        $query = self::query();
+        $column = config('odden-core.users.disabled_column');
+
+        if (! is_string($column) || $column === '') {
+            return $query;
+        }
+
+        $qualified = self::make()->qualifyColumn($column);
+
+        return $query->where(function (Builder $query) use ($qualified, $keep): void {
+            $query->whereNull($qualified);
+
+            if ($keep !== null && $keep !== '' && $keep !== []) {
+                $query->orWhereKey($keep);
+            }
+        });
+    }
+
     public static function make(): Model
     {
         $class = self::className();

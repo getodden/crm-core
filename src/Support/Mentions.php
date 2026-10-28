@@ -31,7 +31,7 @@ final class Mentions
         // "%" and "_" typed in the search are matched as themselves.
         $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
 
-        return UserModel::query()
+        return UserModel::pickable()
             ->when($search !== '', fn ($query) => $query->whereRaw("lower(name) like ? escape '!'", [$pattern]))
             ->orderBy('name')
             ->orderBy($key)
