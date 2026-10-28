@@ -21,14 +21,14 @@ enum PropertyType: string
     public function label(): string
     {
         return match ($this) {
-            self::Text => 'Single-line Text',
+            self::Text => 'Text',
             self::Number => 'Number',
-            self::Boolean => 'Boolean (True/False)',
-            self::Select => 'Dropdown Select',
-            self::MultiSelect => 'Multiple Checkboxes',
-            self::Date => 'Date Picker',
+            self::Boolean => 'Yes or no',
+            self::Select => 'Choice',
+            self::MultiSelect => 'Several choices',
+            self::Date => 'Date',
             self::DateTime => 'Date and Time',
-            self::Json => 'JSON Object',
+            self::Json => 'Structured data (JSON)',
         };
     }
 }
