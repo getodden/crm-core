@@ -41,7 +41,7 @@ class PropertyDefinitionTest extends TestCase
         PropertyDefinition::create([
             'entity_type' => 'contact',
             'name' => 'job_title',
-            'label' => 'Job Title',
+            'label' => 'Job title',
             'type' => PropertyType::Text,
         ]);
 
