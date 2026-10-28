@@ -213,4 +213,23 @@ return [
         'auto_enrich' => false,
         'logo_url' => env('ODDEN_ENRICHMENT_LOGO_URL'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Your logo and colour on the pages visitors see
+    |--------------------------------------------------------------------------
+    |
+    | The booking and quote pages (and the paid packages' help center, portal,
+    | forms and landing pages) show this logo and use this accent colour for
+    | buttons and links. logo_url: an https:// or http:// address, or a path
+    | on this host. accent_color: a #rrggbb colour; white text sits on its
+    | buttons, so pick one dark enough to read white text on (WCAG asks for a
+    | contrast of at least 4.5:1). Anything else is ignored, and with neither
+    | set the pages keep their own look.
+    |
+    */
+    'branding' => [
+        'logo_url' => env('ODDEN_BRAND_LOGO_URL'),
+        'accent_color' => env('ODDEN_BRAND_ACCENT_COLOR'),
+    ],
 ];
