@@ -50,7 +50,15 @@ final class DemoManager
      */
     public function remove(): int
     {
-        return DB::transaction(fn (): int => DemoRecord::purge());
+        return DB::transaction(function (): int {
+            foreach ($this->registry->seeders() as $seeder) {
+                if ($seeder instanceof PreparesDemoRemoval) {
+                    $seeder->prepareRemoval();
+                }
+            }
+
+            return DemoRecord::purge();
+        });
     }
 
     /**
