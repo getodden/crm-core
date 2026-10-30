@@ -31,7 +31,7 @@ class ContactFactory extends Factory
             'first_name' => fake()->firstName(),
             'last_name' => fake()->lastName(),
             'email' => fake()->unique()->safeEmail(),
-            'phone' => fake()->phoneNumber(),
+            'phone' => fake()->numerify('(###) ###-####'),
             'lifecycle_stage' => fake()->randomElement(LifecycleStage::cases()),
             'properties' => [
                 'annual_revenue' => fake()->numberBetween(10000, 500000),

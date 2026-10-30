@@ -29,7 +29,7 @@ class CompanyFactory extends Factory
         return [
             'name' => fake()->company(),
             'domain' => fake()->unique()->domainName(),
-            'phone' => fake()->phoneNumber(),
+            'phone' => fake()->numerify('(###) ###-####'),
             'industry' => fake()->randomElement(['Technology', 'Healthcare', 'Finance', 'Manufacturing', 'Retail']),
             'properties' => [
                 'employees_count' => fake()->numberBetween(5, 500),
