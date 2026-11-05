@@ -56,6 +56,10 @@ use Odden\Core\Registry\ActionGate;
 use Odden\Core\Registry\ActionRegistry;
 use Odden\Core\Registry\Actions;
 use Odden\Core\Registry\AllowAllActionGate;
+use Odden\Core\Screens\CoreScreens;
+use Odden\Core\Screens\NoScreenTenantParameters;
+use Odden\Core\Screens\ScreenRegistry;
+use Odden\Core\Screens\ScreenTenantParameters;
 use Odden\Core\Support\ContactLookup;
 use Odden\Core\Support\Enrichment\EnrichmentManager;
 use Odden\Core\Support\LifecycleStateMachine;
@@ -65,9 +69,6 @@ use Odden\Core\Support\SystemMailRouteResolver;
 
 class CoreServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/odden-core.php', 'odden-core');
@@ -80,22 +81,16 @@ class CoreServiceProvider extends ServiceProvider
             return new EnrichmentManager;
         });
 
-        // Odden is single-tenant unless a multi-tenant host rebinds the tenant context.
         $this->app->singletonIf(TenantContext::class, NullTenantContext::class);
 
-        // Personal data is encrypted with a key from the environment unless a multi-tenant host rebinds the key provider to one
-        // key per tenant. Scoped, so nothing derived from a key outlives the request or the queued job.
         $this->app->scopedIf(KeyProvider::class, EnvironmentKeyProvider::class);
         $this->app->scoped(FieldEncrypter::class);
         $this->app->scoped(ColumnConverter::class);
         $this->app->singleton(EncryptedColumns::class);
         $this->app->scoped(SearchIndex::class);
-        // Which custom properties the workspace marked sensitive: read once per request or job, per tenant.
         $this->app->scoped(SensitiveProperties::class);
         $this->app->scoped(SensitivePropertyConverter::class);
 
-        // Business figures (deal amounts, sales targets) are stored plain unless the workspace turns on "Encrypt business data"; a
-        // multi-tenant host rebinds BusinessData to a per-tenant setting.
         $this->app->singletonIf(BusinessData::class, ConfigBusinessData::class);
         $this->app->singleton(BusinessDataColumns::class);
         $this->app->scoped(BusinessDataConverter::class);
@@ -103,8 +98,6 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->bindIf(FallbackLimit::class, FallbackLimit::class);
         $this->app->scoped(DecryptedFilter::class);
 
-        // Every encrypted field and every table belongs to one data area. Everyone holds every area unless a host that has roles
-        // rebinds AreaAccess (PLAN-encryption-at-rest.md, section 5).
         $this->app->singleton(DataAreas::class);
         $this->app->singletonIf(AreaAccess::class, AllowAllAreaAccess::class);
         $this->app->scoped(Areas::class);
@@ -115,7 +108,6 @@ class CoreServiceProvider extends ServiceProvider
                 'contacts.timezone' => DataArea::Identity, 'contacts.date_of_birth' => DataArea::Sensitive,
                 'companies.name' => DataArea::Identity, 'companies.domain' => DataArea::Identity, 'companies.phone' => DataArea::Identity,
                 'activities.title' => DataArea::Sales, 'activities.body' => DataArea::Sales, 'activities.metadata' => DataArea::Sales,
-                // A change in the history is in the area of the property it records (DataAreas::areaOfProperty); Identity is the floor.
                 'property_history.old_value' => DataArea::Identity, 'property_history.new_value' => DataArea::Identity,
                 'action_log.input' => DataArea::Sales, 'action_log.error' => DataArea::Sales,
                 'proposed_actions.input' => DataArea::Sales, 'proposed_actions.error' => DataArea::Sales,
@@ -125,21 +117,15 @@ class CoreServiceProvider extends ServiceProvider
             $areas->tables(self::tableAreas());
         });
 
-        // The briefing is rule-based unless an application or add-on rebinds the contract to another implementation.
         $this->app->bindIf(SummarizesTimeline::class, SummarizeTimelineAction::class);
 
-        // Whether a domain accepts mail comes from DNS unless an application rebinds the contract.
         $this->app->bindIf(MailRouteResolver::class, SystemMailRouteResolver::class);
 
-        // Modules add their own checks to `odden:install` here.
         $this->app->singleton(InstallSteps::class);
 
-        // Each module adds its sample-data seeder to this list; `odden:demo` runs them in order.
         $this->app->singleton(DemoRegistry::class);
         $this->callAfterResolving(DemoRegistry::class, fn (DemoRegistry $registry) => $registry->register(CoreDemoSeeder::class));
 
-        // Every package registers the actions it offers (people, the assistant and the MCP server all run them) here. A self-hosted
-        // install lets everyone do everything; a host application rebinds the gate to its own permission checks.
         $this->app->singleton(ActionRegistry::class);
         $this->callAfterResolving(ActionRegistry::class, fn (ActionRegistry $registry) => $registry->register(
             Actions\SearchContacts::class,
@@ -151,7 +137,10 @@ class CoreServiceProvider extends ServiceProvider
         $this->app->singletonIf(ActionGate::class, AllowAllActionGate::class);
         $this->app->singleton(ActionExecutor::class);
 
-        // Every package registers its models here; resolved lazily so provider order doesn't matter.
+        $this->app->singletonIf(ScreenTenantParameters::class, NoScreenTenantParameters::class);
+        $this->app->singleton(ScreenRegistry::class);
+        $this->callAfterResolving(ScreenRegistry::class, fn (ScreenRegistry $screens) => CoreScreens::register($screens));
+
         $this->app->singleton(ModelRegistry::class);
         $this->callAfterResolving(ModelRegistry::class, function (ModelRegistry $registry): void {
             $registry->discover(__DIR__.'/Models', 'Odden\\Core\\Models');
@@ -159,10 +148,6 @@ class CoreServiceProvider extends ServiceProvider
         });
     }
 
-    /**
-     * Decrypted values are kept out of the logs: every log channel gets the scrubber, and what the process remembers of decrypted
-     * values is dropped when a request or a job ends.
-     */
     private function scrubLogs(): void
     {
         if (! config('odden-core.logging.scrub', true)) {
@@ -177,27 +162,22 @@ class CoreServiceProvider extends ServiceProvider
             }
         }
 
-        // After the exception of the request or job was reported (a job's is reported after JobFailed, so that event does not clear).
         $events = $this->app->make('events');
         $events->listen(RequestHandled::class, LogScrubber::flush(...));
         $events->listen(JobProcessing::class, LogScrubber::flush(...));
         $events->listen(JobProcessed::class, LogScrubber::flush(...));
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->scrubLogs();
 
-        // Limiters for Odden's public routes: "odden-public" for browser-facing submissions
-        // (forms, chat, portal replies), "odden-poll" for read endpoints that clients call
-        // repeatedly (chat polling, article suggestions), "odden-api" for token-authenticated
-        // server-to-server calls (webhooks, sending APIs). Per IP, per minute. Each module
-        // (the first two segments of the route name, e.g. "odden.service") counts separately,
-        // so a visitor using chat is not throttled by also submitting a marketing form.
+        $this->app->booted(function (): void {
+            $this->app->afterResolving(ScreenRegistry::class, fn (ScreenRegistry $screens) => $screens->freeze());
+            $this->app->make(ScreenRegistry::class)->freeze();
+        });
+
         RateLimiter::for('odden-public', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.public', 30))->by(self::rateLimitKey($request)));
         RateLimiter::for('odden-poll', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.poll', 120))->by(self::rateLimitKey($request)));
         RateLimiter::for('odden-api', fn (Request $request): Limit => Limit::perMinute((int) config('odden-core.rate_limits.api', 600))->by(self::rateLimitKey($request)));
@@ -220,7 +200,6 @@ class CoreServiceProvider extends ServiceProvider
         $columns->add(fn (): string => config('odden-core.tables.property_history', 'odden_property_history'), 'new_value', 'property_history.new_value');
         $columns->add(fn (): string => config('odden-core.tables.action_log', 'odden_action_log'), 'input', 'action_log.input');
         $columns->add(fn (): string => config('odden-core.tables.action_log', 'odden_action_log'), 'error', 'action_log.error');
-        // A proposal's input was encrypted with the application key by Laravel's own cast: read it with that key, store it with the workspace's.
         $columns->add(fn (): string => config('odden-core.tables.proposed_actions', 'odden_proposed_actions'), 'input', 'proposed_actions.input', function (string $value): string {
             try {
                 return Crypt::decryptString($value);
@@ -247,8 +226,6 @@ class CoreServiceProvider extends ServiceProvider
     }
 
     /**
-     * The area of each core table.
-     *
      * @return array<string, DataArea>
      */
     private static function tableAreas(): array
@@ -263,9 +240,6 @@ class CoreServiceProvider extends ServiceProvider
         ];
     }
 
-    /**
-     * Rate limit bucket: the client IP plus the route's module, so modules don't share a counter.
-     */
     protected static function rateLimitKey(Request $request): string
     {
         $name = (string) $request->route()?->getName();
