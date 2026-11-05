@@ -6,13 +6,12 @@ use Odden\Core\Models\ProposedAction;
 use Odden\Core\Registry\CrmAction;
 use Odden\Core\Support\ModelRegistry;
 
-// Dependency rules scan source text; see sourceFilesMatching() in tests/Pest.php.
 it('core domain remains strictly headless (no Filament or Livewire)', function (): void {
     expect(sourceFilesMatching('/(?<![\\\\\w])(Filament|Livewire)\\\\+[A-Z]/'))->toBeEmpty();
 });
 
 it('core does not depend on the other Odden modules', function (): void {
-    expect(sourceFilesMatching('/\bOdden\\\\+(Sales|Service|Marketing|Filament)\\\\+/'))->toBeEmpty();
+    expect(sourceFilesMatching('/\bOdden\\\\+(Sales|Service|Marketing|Filament|Livewire)\\\\+/'))->toBeEmpty();
 });
 
 arch('no debug functions are left in the code')
