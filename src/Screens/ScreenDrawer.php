@@ -14,5 +14,6 @@ final readonly class ScreenDrawer
         public string $class,
         public ?string $page = null,
         public ?string $panel = null,
+        public ?string $path = null,
     ) {}
 }
