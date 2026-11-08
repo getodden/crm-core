@@ -78,9 +78,12 @@ class Company extends Model implements BlindIndexed
     use QualifiesRelatedColumns;
     use SoftDeletes;
 
+    public const SYSTEM_ATTRIBUTES = [
+        'became_subscriber_at', 'became_lead_at', 'became_marketing_qualified_lead_at', 'became_sales_qualified_lead_at',
+        'became_opportunity_at', 'became_customer_at', 'became_evangelist_at', 'became_other_at', 'last_health_calculated_at',
+    ];
+
     /**
-     * The attributes that are mass assignable.
-     *
      * @var list<string>
      */
     protected $fillable = [
@@ -110,17 +113,12 @@ class Company extends Model implements BlindIndexed
         'team_id',
     ];
 
-    /**
-     * Get the table associated with the model.
-     */
     public function getTable(): string
     {
         return config('odden-core.tables.companies', 'odden_companies');
     }
 
     /**
-     * Get the attributes that should be cast.
-     *
      * @return array<string, string>
      */
     protected function casts(): array
@@ -149,57 +147,37 @@ class Company extends Model implements BlindIndexed
         ];
     }
 
-    /**
-     * Determine if customer account is in healthy standing.
-     */
     public function isHealthy(): bool
     {
         return $this->health_status === CustomerHealthStatus::Healthy;
     }
 
-    /**
-     * Determine if customer account is at risk of churn.
-     */
     public function isAtRisk(): bool
     {
         return $this->health_status === CustomerHealthStatus::AtRisk;
     }
 
-    /**
-     * Determine if this account is a qualified high-priority target account.
-     */
     public function isTargetAccount(): bool
     {
         return in_array($this->account_tier, ['tier_1', 'tier_2'], true);
     }
 
-    /**
-     * Determine if account has surging buyer intent.
-     */
     public function isSurging(): bool
     {
         return $this->intent_surge;
     }
 
-    /**
-     * Alias for became_marketing_qualified_lead_at.
-     */
     public function getBecameMqlAtAttribute(): ?CarbonInterface
     {
         return $this->became_marketing_qualified_lead_at;
     }
 
-    /**
-     * Alias for became_sales_qualified_lead_at.
-     */
     public function getBecameSqlAtAttribute(): ?CarbonInterface
     {
         return $this->became_sales_qualified_lead_at;
     }
 
     /**
-     * The owner / assigned sales rep.
-     *
      * @return BelongsTo<Model, $this>
      */
     public function owner(): BelongsTo
@@ -210,8 +188,6 @@ class Company extends Model implements BlindIndexed
     }
 
     /**
-     * Associated contacts.
-     *
      * @return BelongsToMany<Contact, $this>
      */
     public function contacts(): BelongsToMany
@@ -229,9 +205,6 @@ class Company extends Model implements BlindIndexed
     }
 
     /**
-     * The columns found again through the search index: the domain and the name as a whole, the name also by word and by the
-     * start of a word.
-     *
      * @return array<string, array<string, string|true>>
      */
     public static function blindIndexedColumns(): array
@@ -248,8 +221,6 @@ class Company extends Model implements BlindIndexed
     }
 
     /**
-     * Scope query to find company by domain.
-     *
      * @param  Builder<$this>  $query
      * @return Builder<$this>
      */
@@ -259,8 +230,6 @@ class Company extends Model implements BlindIndexed
     }
 
     /**
-     * Companies where a word of the name starts with each word typed.
-     *
      * @param  Builder<$this>  $query
      * @return Builder<$this>
      */
@@ -270,8 +239,6 @@ class Company extends Model implements BlindIndexed
     }
 
     /**
-     * Companies with exactly this name (any case).
-     *
      * @param  Builder<$this>  $query
      * @return Builder<$this>
      */
@@ -280,10 +247,6 @@ class Company extends Model implements BlindIndexed
         return $this->scopeWhereBlindExact($query, 'name', $name);
     }
 
-    /**
-     * A website address reduced to its host: lowercased and trimmed, without the scheme, a
-     * leading `www.`, a port, or anything after the host (https://www.Acme.com/about → acme.com).
-     */
     public static function normalizeDomain(string $domain): string
     {
         $domain = strtolower(trim($domain));
@@ -295,9 +258,6 @@ class Company extends Model implements BlindIndexed
         return str_starts_with($domain, 'www.') ? substr($domain, 4) : $domain;
     }
 
-    /**
-     * Create a new factory instance for the model.
-     */
     protected static function newFactory(): CompanyFactory
     {
         return CompanyFactory::new();

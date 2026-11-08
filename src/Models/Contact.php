@@ -99,9 +99,15 @@ class Contact extends Model implements BlindIndexed
     use QualifiesRelatedColumns;
     use SoftDeletes;
 
+    public const SYSTEM_ATTRIBUTES = [
+        'marketing_email_verified_at', 'sms_consent_at', 'marketing_verification_token', 'marketing_confirmation_token',
+        'became_subscriber_at', 'became_lead_at', 'became_marketing_qualified_lead_at', 'became_sales_qualified_lead_at',
+        'became_opportunity_at', 'became_customer_at', 'became_evangelist_at', 'became_other_at',
+        'sms_consent', 'email_status', 'email_status_reason', 'email_checked_at', 'is_unengaged', 'unengaged_since',
+        'sunset_stage', 'lead_score_updated_at',
+    ];
+
     /**
-     * The attributes that are mass assignable.
-     *
      * @var list<string>
      */
     protected $fillable = [
@@ -145,24 +151,16 @@ class Contact extends Model implements BlindIndexed
     ];
 
     /**
-     * Not shown when a contact is turned into an array or JSON (an API response, a log line): a date of birth is personal data
-     * about a person who may be a child.
-     *
      * @var list<string>
      */
     protected $hidden = ['date_of_birth'];
 
-    /**
-     * Get the table associated with the model.
-     */
     public function getTable(): string
     {
         return config('odden-core.tables.contacts', 'odden_contacts');
     }
 
     /**
-     * Get the attributes that should be cast.
-     *
      * @return array<string, string>
      */
     protected function casts(): array
@@ -203,19 +201,11 @@ class Contact extends Model implements BlindIndexed
         ];
     }
 
-    /**
-     * Whether a message to this address bounced. A bounce is evidence from a real delivery attempt, so
-     * it outranks anything the offline and DNS checks can say; only a change of address clears it.
-     */
     public function hasBounced(): bool
     {
         return $this->email_status === EmailStatus::Invalid && $this->email_status_reason === EmailStatusReason::Bounced;
     }
 
-    /**
-     * The contact's age in whole years on a date (today by default), or null when it is not known: no date of birth, or one in the
-     * future. An unknown age is not an adult age; whoever asks must decide what to do without one.
-     */
     public function age(?CarbonInterface $on = null): ?int
     {
         $born = $this->date_of_birth;
@@ -228,9 +218,6 @@ class Contact extends Model implements BlindIndexed
         return (int) floor($born->startOfDay()->diffInYears($on->copy()->startOfDay()));
     }
 
-    /**
-     * Mark this contact as contacted with timestamp.
-     */
     public function markContacted(?CarbonInterface $at = null): self
     {
         $this->update([
@@ -240,9 +227,6 @@ class Contact extends Model implements BlindIndexed
         return $this;
     }
 
-    /**
-     * Get the contact's full name, falling back to email.
-     */
     public function getFullNameAttribute(): string
     {
         $name = trim("{$this->first_name} {$this->last_name}");
@@ -250,25 +234,17 @@ class Contact extends Model implements BlindIndexed
         return $name !== '' ? $name : $this->email;
     }
 
-    /**
-     * Alias for became_marketing_qualified_lead_at.
-     */
     public function getBecameMqlAtAttribute(): ?CarbonInterface
     {
         return $this->became_marketing_qualified_lead_at;
     }
 
-    /**
-     * Alias for became_sales_qualified_lead_at.
-     */
     public function getBecameSqlAtAttribute(): ?CarbonInterface
     {
         return $this->became_sales_qualified_lead_at;
     }
 
     /**
-     * The owner / assigned sales rep.
-     *
      * @return BelongsTo<Model, $this>
      */
     public function owner(): BelongsTo
@@ -279,8 +255,6 @@ class Contact extends Model implements BlindIndexed
     }
 
     /**
-     * Associated companies.
-     *
      * @return BelongsToMany<Company, $this>
      */
     public function companies(): BelongsToMany
@@ -298,9 +272,6 @@ class Contact extends Model implements BlindIndexed
     }
 
     /**
-     * The columns found again through the search index, and how: the address and the phone number as a whole, the names and the
-     * job title by word, the names also by the start of a word.
-     *
      * @return array<string, array<string, string|true>>
      */
     public static function blindIndexedColumns(): array
@@ -320,8 +291,6 @@ class Contact extends Model implements BlindIndexed
     }
 
     /**
-     * Adds the full name (first and last together), so duplicates are found by name without decrypting.
-     *
      * @return array<string, array<string, list<string>>>
      */
     public function blindIndexEntries(): array
@@ -336,8 +305,6 @@ class Contact extends Model implements BlindIndexed
     }
 
     /**
-     * Scope query to find contact by email.
-     *
      * @param  Builder<$this>  $query
      * @return Builder<$this>
      */
@@ -347,8 +314,6 @@ class Contact extends Model implements BlindIndexed
     }
 
     /**
-     * Contacts where a word of the first or last name starts with each word typed ("ann le" finds Annie Lee).
-     *
      * @param  Builder<$this>  $query
      * @return Builder<$this>
      */
@@ -358,9 +323,6 @@ class Contact extends Model implements BlindIndexed
     }
 
     /**
-     * A search box: matches the typed words against the start of the names, and an address or a phone number typed in full.
-     * Anywhere-inside matching is not available on encrypted columns.
-     *
      * @param  Builder<$this>  $query
      * @return Builder<$this>
      */
@@ -381,15 +343,8 @@ class Contact extends Model implements BlindIndexed
         });
     }
 
-    /**
-     * Record what can be known about the address without touching the network, so every way a
-     * contact is created or re-addressed leaves an honest status behind. The DNS check is a
-     * separate step (see ValidateContactEmailAction) because it should not run inside a save.
-     * A new address never inherits the previous address's status.
-     */
     protected static function booted(): void
     {
-        // Addresses are stored lowercased and trimmed, so lookups by email can use the index.
         static::saving(function (Contact $contact): void {
             $email = $contact->getAttribute('email');
 
@@ -428,9 +383,6 @@ class Contact extends Model implements BlindIndexed
         $contact->email_checked_at = now();
     }
 
-    /**
-     * Create a new factory instance for the model.
-     */
     protected static function newFactory(): ContactFactory
     {
         return ContactFactory::new();

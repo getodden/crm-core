@@ -8,23 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Odden\Core\Contracts\TenantContext;
 use Odden\Core\Exceptions\CrossTenantException;
 
-/**
- * Refuses operations that would cross a tenant boundary.
- *
- * A tenancy add-on stores each record's tenant in a `tenant_id` attribute (the column name is
- * fixed so Core can read it without knowing about the add-on). Models without that column report
- * null, and on single-tenant installs every record and the active tenant are null, so nothing
- * here ever throws for self-hosters.
- */
 final class TenantGuard
 {
     public const string COLUMN = 'tenant_id';
 
     public function __construct(private readonly TenantContext $context) {}
 
-    /**
-     * The tenant a record belongs to, or null when it has none.
-     */
     public function tenantOf(Model $record): int|string|null
     {
         $tenant = $record->getAttribute(self::COLUMN);
@@ -33,9 +22,6 @@ final class TenantGuard
     }
 
     /**
-     * Throw unless both records belong to the same tenant (two null tenants count as the same),
-     * and, when a tenant is active, unless they belong to it.
-     *
      * @throws CrossTenantException
      */
     public function assertSameTenant(Model $a, Model $b): void
@@ -52,8 +38,6 @@ final class TenantGuard
     }
 
     /**
-     * When a tenant is active, throw unless the record belongs to it.
-     *
      * @throws CrossTenantException
      */
     public function assertInActiveTenant(Model $record): void
@@ -65,6 +49,13 @@ final class TenantGuard
                 '%s #%s does not belong to the active tenant.',
                 class_basename($record), $record->getKey(),
             ));
+        }
+    }
+
+    public function assertOwnedWhenTenanted(Model $record): void
+    {
+        if (array_key_exists(self::COLUMN, $record->getAttributes())) {
+            $this->assertInActiveTenant($record);
         }
     }
 
